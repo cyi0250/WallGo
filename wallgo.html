@@ -1,0 +1,2300 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>데블스 플랜: WallGoRANI (온라인 멀티플레이 - 3인 & 채팅 & 타이머)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior: none;
+            user-select: none; /* Prevent text selection during clicks */
+        }
+        .board-container {
+            display: grid;
+            width: 90vw; /* 화면 너비의 90% */
+            max-width: 600px; /* 최대 너비 제한 */
+            min-width: 300px; /* 최소 너비 제한 (필요하다면) */
+            aspect-ratio: 1 / 1; /* 컨테이너 자체를 정사각형으로 유지 */
+            border: 2px solid #374151; /* gray-700 */
+            margin-left: auto;
+            margin-right: auto;
+            position: relative;
+            background-color: #f9fafb; /* gray-50 */
+            grid-auto-rows: 1fr;
+        }
+
+        .cell {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        .player-piece {
+            width: 70%;
+            height: auto;
+            aspect-ratio: 1 / 1;
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: clamp(0.6rem, 2vw, 0.8rem);
+            color: white;
+            z-index: 10;
+            transition: transform 0.2s ease-out, outline 0.2s ease-out;
+            cursor: pointer;
+        }
+        .player1-piece { background-color: #ef4444; } /* red-500 */
+        .player2-piece { background-color: #3b82f6; } /* blue-500 */
+        .player3-piece { background-color: #10b981; } /* emerald-500 */
+
+        .selected-piece-visual {
+            outline: 3px solid #fbbf24;  /* amber-400 */
+            transform: scale(1.1);
+        }
+        .placement-cell-highlight {
+            background-color: rgba(168, 85, 247, 0.2); /* purple-500 with opacity */
+            cursor: pointer;
+        }
+        .wall {
+            position: absolute;
+            background-color: #4b5563; /* gray-600 default */
+            z-index: 5;
+            pointer-events: none;
+        }
+        .horizontal-wall { height: 6px; }
+        .vertical-wall { width: 6px; }
+        .player1-wall { background-color: #dc2626; } /* red-600 */
+        .player2-wall { background-color: #2563eb; } /* blue-600 */
+        .player3-wall { background-color: #059669; } /* emerald-600 */
+
+        .wall-placement-guide {
+            position: absolute;
+            background-color: rgba(167, 139, 250, 0.5); /* purple-400 with opacity */
+            z-index: 6;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .wall-placement-guide:hover {
+            background-color: rgba(147, 51, 234, 0.7); /* purple-600 with opacity */
+        }
+        .area-highlight-p1 { background-color: rgba(239, 68, 68, 0.15); }
+        .area-highlight-p2 { background-color: rgba(59, 130, 246, 0.15); }
+        .area-highlight-p3 { background-color: rgba(16, 185, 129, 0.15); }
+        .area-highlight-contested { background-color: rgba(253, 224, 71, 0.2); }
+
+        .valid-move-highlight {
+            background-color: rgba(74, 222, 128, 0.7);
+            cursor: pointer;
+            z-index: 1;
+        }
+        .message-box {
+            position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white; padding: 2rem; border-radius: 0.5rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15); z-index: 1000;
+            text-align: center; width: 90%; max-width: 400px;
+        }
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.6); z-index: 999;
+        }
+        .setup-screen, .lobby-screen {
+            background-color: rgba(255, 255, 255, 0.98);
+            border-radius: 0.5rem;
+            padding: 2rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+        .input-label {
+            display: block; text-align: left; margin-bottom: 0.5rem; font-weight: 500; color: #374151;
+        }
+        .input-field {
+            width: 100%; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 0.375rem; margin-bottom: 1rem;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+        }
+        .btn-primary {
+            background-color: #3b82f6; color: white; font-weight: 600; padding: 0.75rem 1.5rem; border-radius: 0.375rem;
+            transition: background-color 0.2s;
+        }
+        .btn-primary:hover { background-color: #2563eb; }
+        .btn-secondary {
+            background-color: #6b7280; color: white; font-weight: 600; padding: 0.75rem 1.5rem; border-radius: 0.375rem;
+            transition: background-color 0.2s;
+        }
+        .btn-secondary:hover { background-color: #4b5563; }
+        .disabled-button {
+            background-color: #9ca3af;
+            color: #e5e7eb;
+            cursor: not-allowed;
+        }
+        .disabled-button:hover {
+            background-color: #9ca3af;
+        }
+        #chat-container {
+            scroll-behavior: smooth;
+        }
+        .chat-message {
+            padding: 0.25rem 0.5rem;
+            margin-bottom: 0.25rem;
+            border-radius: 0.25rem;
+        }
+        .chat-message-p1 { background-color: rgba(239, 68, 68, 0.1); }
+        .chat-message-p2 { background-color: rgba(59, 130, 246, 0.1); }
+        .chat-message-p3 { background-color: rgba(16, 185, 129, 0.1); }
+        .chat-message-other { background-color: #e5e7eb; }
+        .dice-roll-area {
+            margin-top: 1rem;
+            padding: 1rem;
+            background-color: #f3f4f6;
+            border-radius: 0.375rem;
+        }
+        .dice-roll-display {
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+        /* IMPROVED TIMER VISIBILITY */
+        #turn-timer-display {
+            font-size: 1.2rem; /* Increased size */
+            font-weight: 600; /* Bolder */
+            color: #1d4ed8; /* A distinct color, e.g., blue-700 */
+            margin-top: 0.5rem;
+            margin-bottom: 1rem; /* More space below */
+            height: auto; /* Allow dynamic height */
+            min-height: 2.25rem; /* Ensure some space */
+            padding: 0.375rem 0.75rem; /* More padding */
+            background-color: #e0e7ff; /* Light indigo background */
+            border-radius: 0.375rem; /* Rounded corners */
+            border: 1px solid #c7d2fe; /* Indigo border */
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            text-align: center; /* Ensure text is centered */
+        }
+
+    </style>
+</head>
+<body class="bg-gray-200 flex flex-col items-center justify-center min-h-screen p-4 selection:bg-blue-500 selection:text-white">
+
+    <div id="auth-info" class="absolute top-2 left-2 bg-white p-2 rounded shadow text-xs">
+        User ID: <span id="user-id-display">N/A</span>
+    </div>
+
+    <div id="initial-screen" class="setup-screen w-full max-w-md text-center">
+        <h1 class="text-3xl font-bold text-gray-800 mb-8">WallGoRANI 온라인</h1>
+        <button id="create-game-btn" class="btn-primary w-full mb-4">게임 생성</button>
+        <div class="flex items-center">
+            <input type="text" id="join-game-id-input" class="input-field mr-2" placeholder="게임 ID 입력">
+            <button id="join-game-btn" class="btn-primary whitespace-nowrap">참가</button>
+        </div>
+    </div>
+
+    <div id="game-setup-screen" class="setup-screen w-full max-w-md text-center hidden">
+        <h1 class="text-3xl font-bold text-gray-800 mb-8">게임 설정 (방장)</h1>
+        <div>
+            <label for="grid-size-input" class="input-label">맵 크기 (3 ~ 11):</label>
+            <input type="number" id="grid-size-input" class="input-field" value="4" min="3" max="11">
+        </div>
+                <div>
+            <label for="num-players-select" class="input-label">플레이어 수:</label>
+            <select id="num-players-select" class="input-field">
+                <option value="2" selected>2명</option>
+                <option value="3">3명</option>
+            </select>
+        </div>
+        <div>
+            <label for="pieces-per-player-input" class="input-label">플레이어당 말 개수 (1 ~ 5):</label>
+            <input type="number" id="pieces-per-player-input" class="input-field" value="2" min="1" max="5">
+        </div>
+                <div>
+            <label for="turn-time-limit-input" class="input-label">턴 제한 시간 (초, 0 이하는 무제한):</label>
+            <input type="number" id="turn-time-limit-input" class="input-field" value="30" min="-1">
+        </div>
+        <button id="confirm-setup-button" class="btn-primary w-full mt-4">설정 완료 및 대기</button>
+    </div>
+
+    <div id="lobby-screen" class="lobby-screen w-full max-w-md text-center hidden">
+        <h2 class="text-2xl font-semibold text-gray-700 mb-4">게임 로비</h2>
+        <p class="mb-2">게임 ID: <strong id="lobby-game-id" class="text-blue-600"></strong></p>
+        <p id="lobby-status" class="mb-6 text-lg text-gray-600">상대방을 기다리는 중...</p>
+        <div id="player-info-lobby" class="mb-4">
+            <p>당신은 <span id="your-player-number-lobby" class="font-bold"></span> 입니다.</p>
+        </div>
+        <button id="start-dice-roll-btn" class="btn-primary w-full mb-4 hidden">주사위 굴리기 시작 (순서 결정)</button>
+        <button id="copy-game-id-btn" class="btn-secondary w-full mb-4">게임 ID 복사</button>
+    </div>
+
+    <div id="game-play-screen" class="w-full max-w-5xl bg-white p-6 rounded-lg shadow-xl hidden">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-2">데블스 플랜: WallGoRANI (온라인)</h1>
+        <div class="text-sm text-center mb-1 text-gray-500">게임 ID: <span id="game-id-display"></span></div>
+        <div class="text-sm text-center mb-1 text-gray-500">당신은 <span id="your-player-number-game" class="font-bold"></span> 입니다.</div>
+        <div id="turn-timer-display" class="text-center"></div>
+
+        <div id="dice-roll-ui-area" class="dice-roll-area text-center hidden">
+            <h3 class="text-xl font-semibold mb-3">주사위 굴리기</h3>
+            <div id="dice-roll-results-display" class="mb-3"></div>
+            <button id="roll-my-dice-btn" class="btn-primary">내 주사위 굴리기 (1-6)</button>
+            <p id="dice-roll-status-message" class="mt-2 text-gray-600"></p>
+        </div>
+
+        <div class="flex flex-col md:flex-row gap-6">
+            <div class="w-full md:w-1/3 lg:w-1/4 flex flex-col space-y-2 md:order-1">
+                <h2 class="text-xl font-semibold text-gray-700 mb-2">채팅</h2>
+                <div id="chat-container" class="border rounded-md p-3 flex-grow overflow-y-auto bg-gray-50 text-sm h-64 md:h-auto min-h-[200px]">
+                </div>
+                <div class="mt-2 flex">
+                    <input type="text" id="chat-input" class="input-field flex-grow mr-2 !mb-0" placeholder="메시지 입력...">
+                    <button id="send-chat-btn" class="btn-primary whitespace-nowrap">전송</button>
+                </div>
+            </div>
+
+            <div class="w-full md:w-2/3 lg:w-3/4 md:order-2">
+                <div class="flex justify-between items-center mb-4 text-lg">
+                    <div class="flex items-center">
+                        <span class="font-semibold mr-1">P1:</span>
+                        <span id="player1-area-score" class="text-xl font-bold text-red-600">0</span>
+                    </div>
+                    <div id="player3-score-display" class="flex items-center hidden"> <span class="font-semibold mr-1">P3:</span>
+                        <span id="player3-area-score" class="text-xl font-bold text-emerald-600">0</span>
+                    </div>
+                    <div id="turn-indicator" class="text-xl font-semibold text-center text-gray-700">P1 차례</div>
+                    <div class="flex items-center">
+                        <span class="font-semibold mr-1">P2:</span>
+                        <span id="player2-area-score" class="text-xl font-bold text-blue-600">0</span>
+                    </div>
+                </div>
+                <div id="board-container" class="board-container rounded-md"></div>
+                <div id="message-area" class="text-center mt-4 text-md font-medium text-gray-700 h-12"></div>
+            </div>
+        </div>
+
+        <button id="reset-button" class="mt-6 w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 px-4 rounded-lg shadow transition">
+            새 게임 시작 (메인 화면으로)
+        </button>
+    </div>
+    <div id="custom-modal-overlay" class="overlay hidden"></div>
+    <div id="custom-modal" class="message-box hidden">
+        <p id="custom-modal-title" class="text-xl font-semibold mb-2"></p>
+        <p id="custom-modal-message" class="text-lg mb-4"></p>
+        <button id="custom-modal-close" class="mt-4 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
+            확인
+        </button>
+    </div>
+
+    <script type="module">
+        // Firebase SDK imports
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, serverTimestamp, writeBatch, runTransaction, query, orderBy, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+
+
+        // Firebase configuration and App ID (provided by Canvas environment)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-wall-baduk-app';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "", // Fallback for local dev if needed
+            authDomain: "",
+            projectId: "",
+            storageBucket: "",
+            messagingSenderId: "",
+            appId: "",
+            measurementId: ""
+        };
+
+
+        // Initialize Firebase
+        const fbApp = initializeApp(firebaseConfig);
+        const fbAuth = getAuth(fbApp);
+        const db = getFirestore(fbApp);
+        console.log(`[Firebase Init] AppId being used: ${appId}`);
+        setLogLevel('debug');
+
+        let userId = null;
+        let currentGameId = null;
+        let localPlayerNumber = null;
+        let unsubscribeGameListener = null;
+        let unsubscribeChatListener = null;
+
+
+        // Game Constants and State Variables
+        let GRID_SIZE = 4; // Default, will be updated from setup
+        const PLAYER1 = 1;
+        const PLAYER2 = 2;
+        const PLAYER3 = 3;
+        const EMPTY = 0;
+        const MAX_MOVES_PER_TURN = 2;
+
+        const STATE_INITIAL = 'STATE_INITIAL';
+        const STATE_GAME_SETUP = 'STATE_GAME_SETUP';
+        const STATE_LOBBY = 'STATE_LOBBY';
+        const STATE_DICE_ROLL_SETUP = 'STATE_DICE_ROLL_SETUP';
+        const STATE_DICE_ROLL_PENDING = 'STATE_DICE_ROLL_PENDING';
+        const STATE_PIECE_PLACEMENT = 'STATE_PIECE_PLACEMENT';
+        const STATE_AWAIT_PIECE_SELECTION = 'AWAIT_PIECE_SELECTION';
+        const STATE_AWAIT_MOVE = 'AWAIT_MOVE';
+        const STATE_AWAIT_WALL_PLACEMENT = 'AWAIT_WALL_PLACEMENT';
+        const STATE_GAME_OVER = 'GAME_OVER';
+
+
+        const DEFAULT_PIECES_PER_PLAYER = 2; // 새로운 상수 추가 (선택 사항)
+
+            let currentGlobalGameState = {
+                gridSize: GRID_SIZE,
+            // 수정된 부분: playerPiecesConfig 와 piecesToPlace 초기값
+                playerPiecesConfig: { 
+                [PLAYER1]: DEFAULT_PIECES_PER_PLAYER, 
+                [PLAYER2]: DEFAULT_PIECES_PER_PLAYER, 
+                [PLAYER3]: 0 // 기본은 2인용
+            },
+                currentPlayer: PLAYER1,
+                gameState: STATE_INITIAL,
+                playerPositions: { [PLAYER1]: [], [PLAYER2]: [], [PLAYER3]: [] },
+                hWalls: JSON.stringify(Array(GRID_SIZE - 1).fill(null).map(() => Array(GRID_SIZE).fill(EMPTY))),
+                vWalls: JSON.stringify(Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE - 1).fill(EMPTY))),
+                areaScores: { [PLAYER1]: 0, [PLAYER2]: 0, [PLAYER3]: 0 },
+                placementPlayer: PLAYER1,
+            // 수정된 부분: piecesToPlace 초기값
+                piecesToPlace: { 
+                [PLAYER1]: DEFAULT_PIECES_PER_PLAYER, 
+                [PLAYER2]: DEFAULT_PIECES_PER_PLAYER, 
+                [PLAYER3]: 0 // 기본은 2인용
+            },
+                player1Id: null,
+                player2Id: null,
+                player3Id: null,
+                winner: null,
+                lastMessage: "",
+                diceRolls: { [PLAYER1]: null, [PLAYER2]: null, [PLAYER3]: null },
+                playerOrder: [],
+                turnTimeLimitSeconds: 30,
+                turnContext: null,
+            };
+
+        // Local turn state variables
+        let activePiece = null;
+        let movesMadeThisTurn = 0;
+        let pieceActionLocked = false;
+
+        let turnTimerInterval = null; 
+        let remainingTurnTime = 0; 
+        let globalTimerUpdateInterval = null; 
+
+
+        // DOM Elements
+        const initialScreen = document.getElementById('initial-screen');
+        const createGameBtn = document.getElementById('create-game-btn');
+        const joinGameIdInput = document.getElementById('join-game-id-input');
+        const joinGameBtn = document.getElementById('join-game-btn');
+        const userIdDisplay = document.getElementById('user-id-display');
+
+        const gameSetupScreen = document.getElementById('game-setup-screen');
+        const gridSizeInput = document.getElementById('grid-size-input');
+        const numPlayersSelect = document.getElementById('num-players-select'); // New
+        // const player1PiecesInput = document.getElementById('player1-pieces-input');
+        // const player2PiecesInput = document.getElementById('player2-pieces-input');
+        // const player3SetupSection = document.getElementById('player3-setup-section'); // New
+        // const player3PiecesInput = document.getElementById('player3-pieces-input');
+        const turnTimeLimitInput = document.getElementById('turn-time-limit-input');
+        const confirmSetupButton = document.getElementById('confirm-setup-button');
+
+        //const numPlayersSelect = document.getElementById('num-players-select');
+        const piecesPerPlayerInput = document.getElementById('pieces-per-player-input');
+
+        const lobbyScreen = document.getElementById('lobby-screen');
+        const lobbyGameIdElement = document.getElementById('lobby-game-id');
+        const lobbyStatusElement = document.getElementById('lobby-status');
+        const copyGameIdBtn = document.getElementById('copy-game-id-btn');
+        const yourPlayerNumberLobby = document.getElementById('your-player-number-lobby');
+        const startDiceRollBtn = document.getElementById('start-dice-roll-btn');
+
+        const gamePlayScreen = document.getElementById('game-play-screen');
+        const gameIdDisplay = document.getElementById('game-id-display');
+        const yourPlayerNumberGame = document.getElementById('your-player-number-game');
+        const turnTimerDisplay = document.getElementById('turn-timer-display');
+        const boardContainer = document.getElementById('board-container');
+        const turnIndicatorElement = document.getElementById('turn-indicator');
+        const p1AreaScoreElement = document.getElementById('player1-area-score');
+        const p2AreaScoreElement = document.getElementById('player2-area-score');
+        const p3AreaScoreElement = document.getElementById('player3-area-score');
+        const p3ScoreDisplayElement = document.getElementById('player3-score-display');
+        const messageAreaElement = document.getElementById('message-area');
+        const resetButtonElement = document.getElementById('reset-button');
+
+        const diceRollUiArea = document.getElementById('dice-roll-ui-area');
+        const diceRollResultsDisplay = document.getElementById('dice-roll-results-display');
+        const rollMyDiceBtn = document.getElementById('roll-my-dice-btn');
+        const diceRollStatusMessage = document.getElementById('dice-roll-status-message');
+
+        const modalOverlay = document.getElementById('custom-modal-overlay');
+        const modal = document.getElementById('custom-modal');
+        const modalTitleElement = document.getElementById('custom-modal-title');
+        const modalMessageElement = document.getElementById('custom-modal-message');
+        const modalCloseButton = document.getElementById('custom-modal-close');
+
+        const chatContainer = document.getElementById('chat-container');
+        const chatInput = document.getElementById('chat-input');
+        const sendChatBtn = document.getElementById('send-chat-btn');
+
+
+        // --- Authentication ---
+        onAuthStateChanged(fbAuth, async (user) => {
+            if (user) {
+                userId = user.uid;
+                userIdDisplay.textContent = userId;
+                console.log("User is signed in with UID:", userId);
+                enableLobbyButtons();
+            } else {
+                console.log("User is signed out. Attempting to sign in...");
+                try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(fbAuth, __initial_auth_token);
+                        console.log("Signed in with custom token.");
+                    } else {
+                        await signInAnonymously(fbAuth);
+                        console.log("Signed in anonymously.");
+                    }
+                } catch (error) {
+                    console.error("Error signing in: ", error);
+                    showModal("인증 오류", "게임 서버에 연결할 수 없습니다. 페이지를 새로고침 해주세요.");
+                    disableLobbyButtons();
+                }
+            }
+        });
+
+        function disableLobbyButtons() {
+            createGameBtn.disabled = true;
+            joinGameBtn.disabled = true;
+            createGameBtn.classList.add('disabled-button');
+            joinGameBtn.classList.add('disabled-button');
+        }
+        function enableLobbyButtons() {
+            createGameBtn.disabled = false;
+            joinGameBtn.disabled = false;
+            createGameBtn.classList.remove('disabled-button');
+            joinGameBtn.classList.remove('disabled-button');
+        }
+
+
+        // --- Modal Functions ---
+        function showModal(title, message) {
+            modalTitleElement.textContent = title;
+            modalMessageElement.textContent = message;
+            modalOverlay.classList.remove('hidden');
+            modal.classList.remove('hidden');
+        }
+        function closeModal() {
+            modalOverlay.classList.add('hidden');
+            modal.classList.add('hidden');
+        }
+        modalCloseButton.addEventListener('click', closeModal);
+
+        // --- Screen Management ---
+        function showScreen(screenId) {
+            [initialScreen, gameSetupScreen, lobbyScreen, gamePlayScreen].forEach(s => s.classList.add('hidden'));
+            document.getElementById(screenId).classList.remove('hidden');
+            diceRollUiArea.classList.add('hidden'); 
+        }
+
+        // --- Firestore Path ---
+        function getGameDocRef(gameId) {
+            return doc(db, "artifacts", appId, "public/data/wall_baduk_games", gameId);
+        }
+        function getChatCollectionRef(gameId) {
+            return collection(db, "artifacts", appId, "public/data/wall_baduk_games", gameId, "chatMessages");
+        }
+
+        // --- Game Initialization and Setup (Online) ---
+        createGameBtn.addEventListener('click', () => {
+            if (!userId) {
+                showModal("인증 필요", "사용자 인증 중입니다. 잠시 후 다시 시도해주세요.");
+                return;
+            }
+            // Reset setup screen to defaults
+            // HTML에 실제로 있는 요소들의 값을 초기화합니다.
+            if (gridSizeInput) {
+                gridSizeInput.value = "4";
+            }
+            if (numPlayersSelect) {
+                numPlayersSelect.value = "2";
+                // 플레이어 수 선택 변경에 따른 UI 업데이트가 필요하다면,
+                // numPlayersSelect의 'change' 이벤트 리스너가 올바르게 동작해야 합니다.
+                // (아래 numPlayersSelect 이벤트 리스너 수정 참고)
+            }
+            if (piecesPerPlayerInput) { // HTML에 있는 '플레이어당 말 개수' 필드
+                piecesPerPlayerInput.value = "2"; // 기본값으로 설정
+            }
+            if (turnTimeLimitInput) {
+                turnTimeLimitInput.value = "30";
+            }
+
+            // 존재하지 않는 요소들에 대한 참조는 제거했습니다.
+            // player3SetupSection.classList.add('hidden'); // HTML에 player3-setup-section ID 요소 없음
+            // player1PiecesInput.value = "2";            // HTML에 player1-pieces-input ID 요소 없음
+            // player2PiecesInput.value = "2";            // HTML에 player2-pieces-input ID 요소 없음
+            // player3PiecesInput.value = "1";            // HTML에 player3-pieces-input ID 요소 없음
+
+            showScreen('game-setup-screen');
+        });
+        
+        numPlayersSelect.addEventListener('change', () => {
+            const selectedNumPlayers = parseInt(numPlayersSelect.value);
+
+            // const player3SetupSection = document.getElementById('player3-setup-section'); // HTML에 해당 ID의 요소가 없습니다.
+            // const player3PiecesInput = document.getElementById('player3-pieces-input'); // HTML에 해당 ID의 요소가 없습니다.
+
+            // 만약 'player3-setup-section' 이라는 ID를 가진 HTML 요소가 실제로 있고,
+            // 3인용일 때 해당 섹션을 보여주고 싶다면, 아래 주석을 해제하고 해당 HTML 요소도 추가해야 합니다.
+            // 현재는 HTML에 해당 요소가 없으므로, 이 부분은 실행되지 않거나 오류를 발생시키지 않도록 주석 처리합니다.
+            /*
+            if (player3SetupSection) { // player3SetupSection 요소가 실제로 존재할 경우에만 실행
+                if (selectedNumPlayers === 3) {
+                    player3SetupSection.classList.remove('hidden');
+                    if (player3PiecesInput && parseInt(player3PiecesInput.value) === 0) {
+                        player3PiecesInput.value = "1";
+                    }
+                } else { // 2 players
+                    player3SetupSection.classList.add('hidden');
+                }
+            }
+            */
+            // 현재 코드에서는 3인 플레이어 여부에 따른 UI 변경 로직이 없으므로,
+            // 이 이벤트 리스너는 특별히 하는 일이 없을 수 있습니다.
+            // 게임 로직(confirmSetupButton 클릭 시)에서는 numPlayersSelect.value를 사용합니다.
+        });
+
+
+        confirmSetupButton.addEventListener('click', async () => {
+            const newGridSize = parseInt(gridSizeInput.value);
+            if (isNaN(newGridSize) || newGridSize < 3 || newGridSize > 11) {
+                showModal("오류", "맵 크기는 3에서 11 사이의 숫자여야 합니다."); return;
+            }
+
+        // --- 변경된 부분 시작 ---
+            const numPlayers = parseInt(numPlayersSelect.value); // 플레이어 수 (2 또는 3)
+            const piecesPerPlayer = parseInt(piecesPerPlayerInput.value); // 플레이어당 말 개수
+
+            if (isNaN(numPlayers) || (numPlayers !== 2 && numPlayers !== 3)) {
+                showModal("오류", "플레이어 수는 2명 또는 3명이어야 합니다."); return;
+            }
+            if (isNaN(piecesPerPlayer) || piecesPerPlayer < 1 || piecesPerPlayer > 5) {
+                showModal("오류", "플레이어당 말 개수는 1에서 5 사이의 숫자여야 합니다."); return;
+            }
+        // --- 변경된 부분 끝 ---
+
+            const timeLimit = parseInt(turnTimeLimitInput.value);
+            if (isNaN(timeLimit)) {
+                showModal("오류", "턴 제한 시간은 숫자여야 합니다."); return;
+            }
+
+        // --- 유효성 검사 수정 ---
+            const totalPieces = numPlayers * piecesPerPlayer;
+            if (totalPieces > newGridSize * newGridSize) {
+                showModal("오류", "총 말의 개수가 맵의 칸 수보다 많을 수 없습니다."); return;
+            }
+        // P1은 항상 존재해야 하고, 최소 1개의 말을 가져야 함 (piecesPerPlayer >= 1 조건으로 이미 처리됨)
+        // --- 유효성 검사 수정 끝 ---
+
+            currentGameId = `game_${crypto.randomUUID().substring(0, 8)}`;
+            localPlayerNumber = PLAYER1;
+
+            const initialHWalls = Array(newGridSize - 1).fill(null).map(() => Array(newGridSize).fill(EMPTY));
+            const initialVWalls = Array(newGridSize).fill(null).map(() => Array(newGridSize - 1).fill(EMPTY));
+
+        // --- playerPiecesConfig 및 piecesToPlace 설정 수정 ---
+        const p1ConfigPieces = piecesPerPlayer;
+        const p2ConfigPieces = piecesPerPlayer;
+        const p3ConfigPieces = (numPlayers === 3) ? piecesPerPlayer : 0;
+
+            const newGameData = {
+                gridSize: newGridSize,
+                playerPiecesConfig: { 
+                [PLAYER1]: p1ConfigPieces, 
+                [PLAYER2]: p2ConfigPieces, 
+                [PLAYER3]: p3ConfigPieces 
+            },
+                currentPlayer: PLAYER1, // 주사위 또는 배치 순서에 따라 변경될 예정
+                gameState: STATE_LOBBY,
+                playerPositions: { [PLAYER1]: [], [PLAYER2]: [], [PLAYER3]: [] },
+                hWalls: JSON.stringify(initialHWalls),
+                vWalls: JSON.stringify(initialVWalls),
+                areaScores: { [PLAYER1]: 0, [PLAYER2]: 0, [PLAYER3]: 0 },
+                placementPlayer: PLAYER1, // 초기 배치 플레이어
+                piecesToPlace: { 
+                [PLAYER1]: p1ConfigPieces, 
+                [PLAYER2]: p2ConfigPieces, 
+                [PLAYER3]: p3ConfigPieces 
+            },
+                player1Id: userId,
+                player2Id: null,
+                player3Id: null,
+                winner: null,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+                lastMessage: `플레이어 1 (${userId.substring(0,5)}...)이(가) 게임 생성.`,
+                diceRolls: { [PLAYER1]: null, [PLAYER2]: null, [PLAYER3]: null },
+                playerOrder: [],
+                turnTimeLimitSeconds: timeLimit <= 0 ? -1 : timeLimit,
+                turnContext: null,
+            };
+        // --- playerPiecesConfig 및 piecesToPlace 설정 수정 끝 ---
+
+            try {
+                const gameDocRefForCreate = getGameDocRef(currentGameId);
+                await setDoc(gameDocRefForCreate, newGameData);
+                lobbyGameIdElement.textContent = currentGameId;
+                yourPlayerNumberLobby.textContent = `플레이어 ${localPlayerNumber}`;
+                showScreen('lobby-screen');
+            
+            // --- 로비 메시지 수정 (단독 플레이는 이제 없음) ---
+            lobbyStatusElement.textContent = "플레이어 2를 기다리는 중..."; 
+            if (numPlayers === 3) {
+                lobbyStatusElement.textContent = "플레이어 2와 3을 기다리는 중...";
+            }
+            // --- 로비 메시지 수정 끝 ---
+
+                // P1 단독 플레이 즉시 시작 로직은 제거 (항상 다른 플레이어를 기다림)
+            // if (p2ConfigPieces === 0 && p3ConfigPieces === 0) { ... } 이 부분은 삭제 또는 주석 처리
+
+                startGameListener(currentGameId);
+                startChatListener(currentGameId);
+            } catch (error) {
+                console.error("Error creating game:", error);
+                showModal("생성 오류", "게임을 생성하지 못했습니다: " + error.message);
+                showScreen('initial-screen');
+            }
+        });
+
+        joinGameBtn.addEventListener('click', async () => {
+            if (!userId) {
+                showModal("인증 필요", "사용자 인증 중입니다. 잠시 후 다시 시도해주세요.");
+                return;
+            }
+            const gameIdToJoin = joinGameIdInput.value.trim();
+            if (!gameIdToJoin) {
+                showModal("입력 오류", "참가할 게임 ID를 입력하세요.");
+                return;
+            }
+
+            const gameDocRef = getGameDocRef(gameIdToJoin);
+            try {
+                const directGameDoc = await getDoc(gameDocRef);
+                if (!directGameDoc.exists()) {
+                    showModal("참가 오류", `게임 ID '${gameIdToJoin}'를 찾을 수 없습니다.`);
+                    return;
+                }
+
+                await runTransaction(db, async (transaction) => {
+                    const gameDoc = await transaction.get(gameDocRef);
+                    if (!gameDoc.exists()) {
+                        throw new Error("게임을 찾을 수 없습니다 (트랜잭션 중).");
+                    }
+                    const gameData = gameDoc.data();
+                    const isThreePlayerGameExpected = gameData.playerPiecesConfig[PLAYER3] > 0;
+
+                    if (gameData.player1Id === userId) {
+                        localPlayerNumber = PLAYER1;
+                    } else if (!gameData.player2Id && gameData.playerPiecesConfig[PLAYER2] > 0) {
+                        if (userId === gameData.player1Id) throw new Error("이미 P1으로 참가했습니다.");
+                        transaction.update(gameDocRef, {
+                            player2Id: userId,
+                            updatedAt: serverTimestamp(),
+                            lastMessage: `플레이어 2 (${userId.substring(0,5)}...) 참가.`
+                        });
+                        localPlayerNumber = PLAYER2;
+                    } else if (isThreePlayerGameExpected && !gameData.player3Id && gameData.playerPiecesConfig[PLAYER3] > 0) {
+                        if (userId === gameData.player1Id || userId === gameData.player2Id) throw new Error("이미 P1 또는 P2로 참가했습니다.");
+                        transaction.update(gameDocRef, {
+                            player3Id: userId,
+                            updatedAt: serverTimestamp(),
+                            lastMessage: `플레이어 3 (${userId.substring(0,5)}...) 참가.`
+                        });
+                        localPlayerNumber = PLAYER3;
+                    } else if (gameData.player2Id === userId) {
+                        localPlayerNumber = PLAYER2;
+                    } else if (isThreePlayerGameExpected && gameData.player3Id === userId) {
+                        localPlayerNumber = PLAYER3;
+                    } else {
+                        throw new Error("게임이 가득 찼거나 참가할 수 없는 상태입니다.");
+                    }
+                });
+
+                currentGameId = gameIdToJoin;
+                lobbyGameIdElement.textContent = currentGameId;
+                yourPlayerNumberLobby.textContent = `플레이어 ${localPlayerNumber}`;
+                startGameListener(currentGameId);
+                startChatListener(currentGameId);
+                showScreen('lobby-screen'); // Ensure lobby is shown after joining
+
+            } catch (error) {
+                console.error("[JOIN ERROR]:", error);
+                showModal("참가 오류", `게임 참가 중 오류: ${error.message}`);
+            }
+        });
+
+        copyGameIdBtn.addEventListener('click', () => {
+            if (currentGameId) {
+                const tempInput = document.createElement('input');
+                tempInput.style.position = 'absolute';
+                tempInput.style.left = '-9999px';
+                tempInput.value = currentGameId;
+                document.body.appendChild(tempInput);
+                tempInput.select();
+                try {
+                    document.execCommand('copy');
+                    showModal("복사 완료", `게임 ID (${currentGameId})가 클립보드에 복사되었습니다.`);
+                } catch (err) {
+                    showModal("복사 실패", "클립보드 접근에 실패했습니다. 직접 복사해주세요.");
+                }
+                document.body.removeChild(tempInput);
+            }
+        });
+
+        startDiceRollBtn.addEventListener('click', async () => {
+            if (!currentGameId || localPlayerNumber !== PLAYER1 || !currentGlobalGameState) {
+                showModal("오류", "방장만 주사위 굴리기를 시작할 수 있습니다.");
+                return;
+            }
+            const gameDocRef = getGameDocRef(currentGameId);
+            try {
+                await updateDoc(gameDocRef, {
+                    gameState: STATE_DICE_ROLL_SETUP,
+                    diceRolls: {
+                        [PLAYER1]: null,
+                        [PLAYER2]: currentGlobalGameState.playerPiecesConfig[PLAYER2] > 0 ? null : -1,
+                        [PLAYER3]: currentGlobalGameState.playerPiecesConfig[PLAYER3] > 0 ? null : -1
+                    },
+                    playerOrder: [],
+                    turnContext: null, 
+                    lastMessage: "주사위 굴리기를 시작합니다! 각자 주사위를 굴려주세요.",
+                    updatedAt: serverTimestamp()
+                });
+            } catch (error) {
+                console.error("Error starting dice roll:", error);
+                showModal("오류", "주사위 굴리기를 시작하지 못했습니다: " + error.message);
+            }
+        });
+
+        rollMyDiceBtn.addEventListener('click', async () => {
+            if (!currentGameId || !localPlayerNumber || !currentGlobalGameState ||
+                currentGlobalGameState.gameState !== STATE_DICE_ROLL_SETUP ||
+                currentGlobalGameState.diceRolls[localPlayerNumber] !== null) {
+                showModal("오류", "지금은 주사위를 굴릴 수 없거나 이미 굴렸습니다.");
+                return;
+            }
+
+            const roll = Math.floor(Math.random() * 6) + 1;
+            const gameDocRef = getGameDocRef(currentGameId);
+            try {
+                const updates = {};
+                updates[`diceRolls.${localPlayerNumber}`] = roll;
+                updates.lastMessage = `플레이어 ${localPlayerNumber}이(가) 주사위를 굴렸습니다: ${roll}`;
+                updates.updatedAt = serverTimestamp();
+                await updateDoc(gameDocRef, updates);
+                rollMyDiceBtn.disabled = true;
+                rollMyDiceBtn.classList.add('disabled-button');
+            } catch (error) {
+                console.error("Error rolling dice:", error);
+                showModal("오류", "주사위 굴리기에 실패했습니다: " + error.message);
+            }
+        });
+
+
+        function startGameListener(gameId) {
+            if (unsubscribeGameListener) {
+                unsubscribeGameListener();
+            }
+            const gameDocRef = getGameDocRef(gameId);
+            unsubscribeGameListener = onSnapshot(gameDocRef, (docSnapshot) => {
+                const oldPlayer1Id = currentGlobalGameState?.player1Id;
+                const oldPlayer2Id = currentGlobalGameState?.player2Id;
+                const oldPlayer3Id = currentGlobalGameState?.player3Id;
+                const oldGameState = currentGlobalGameState?.gameState;
+                const previousPlayer = currentGlobalGameState?.currentPlayer;
+                const oldTurnContext = currentGlobalGameState?.turnContext;
+
+
+                if (docSnapshot.exists()) {
+                    const newRemoteState = docSnapshot.data();
+
+                    currentGlobalGameState = {
+                        ...newRemoteState,
+                        hWalls: JSON.parse(newRemoteState.hWalls || "[]"),
+                        vWalls: JSON.parse(newRemoteState.vWalls || "[]"),
+                        playerPositions: JSON.parse(JSON.stringify(newRemoteState.playerPositions || { [PLAYER1]: [], [PLAYER2]: [], [PLAYER3]: [] }))
+                    };
+                    GRID_SIZE = currentGlobalGameState.gridSize;
+
+
+                    // --- Disconnect Logic ---
+                    if (oldGameState && oldGameState !== STATE_GAME_OVER &&
+                        oldGameState !== STATE_LOBBY && oldGameState !== STATE_INITIAL && oldGameState !== STATE_GAME_SETUP) {
+
+                        let leaverPlayerNum = null;
+                        if (oldPlayer1Id && !currentGlobalGameState.player1Id) leaverPlayerNum = PLAYER1;
+                        else if (oldPlayer2Id && !currentGlobalGameState.player2Id) leaverPlayerNum = PLAYER2;
+                        else if (currentGlobalGameState.playerPiecesConfig[PLAYER3] > 0 && oldPlayer3Id && !currentGlobalGameState.player3Id) leaverPlayerNum = PLAYER3;
+
+                        if (leaverPlayerNum && currentGlobalGameState.gameState !== STATE_GAME_OVER) {
+                            runTransaction(db, async (transaction) => {
+                                const freshGameDoc = await transaction.get(gameDocRef);
+                                if (!freshGameDoc.exists()) throw "Document does not exist!";
+                                const freshGameData = freshGameDoc.data();
+
+                                if (freshGameData.gameState !== STATE_GAME_OVER) {
+                                    let winnerByForfeit = null;
+                                    const remainingPlayerIds = [freshGameData.player1Id, freshGameData.player2Id, freshGameData.player3Id].filter(id => id != null);
+                                    let gameOverMsg = `플레이어 ${leaverPlayerNum}이(가) 게임을 떠났습니다. 게임 종료.`;
+
+                                    if (remainingPlayerIds.length === 1) {
+                                        if (freshGameData.player1Id) winnerByForfeit = PLAYER1;
+                                        else if (freshGameData.player2Id) winnerByForfeit = PLAYER2;
+                                        else if (freshGameData.player3Id) winnerByForfeit = PLAYER3;
+                                        gameOverMsg = `플레이어 ${leaverPlayerNum}이(가) 게임을 떠났습니다. 플레이어 ${winnerByForfeit} 승리!`;
+                                    } else if (remainingPlayerIds.length === 0) { 
+                                        gameOverMsg = `모든 플레이어가 게임을 떠났습니다. 게임 종료.`;
+                                    }
+
+
+                                    transaction.update(gameDocRef, {
+                                        gameState: STATE_GAME_OVER,
+                                        winner: winnerByForfeit,
+                                        lastMessage: gameOverMsg,
+                                        turnContext: null, 
+                                        updatedAt: serverTimestamp()
+                                    });
+                                }
+                            }).catch(err => {
+                                console.error("Transaction failed for game over on disconnect: ", err);
+                            });
+                        }
+                    }
+                    // --- End Disconnect Logic ---
+
+                    // --- Dice Roll Completion Logic ---
+                    if (currentGlobalGameState.gameState === STATE_DICE_ROLL_SETUP) {
+                        const activePlayersForDice = [];
+                        if (currentGlobalGameState.playerPiecesConfig[PLAYER1] > 0) activePlayersForDice.push(PLAYER1);
+                        if (currentGlobalGameState.playerPiecesConfig[PLAYER2] > 0) activePlayersForDice.push(PLAYER2);
+                        if (currentGlobalGameState.playerPiecesConfig[PLAYER3] > 0) activePlayersForDice.push(PLAYER3);
+
+                        const allRolled = activePlayersForDice.every(pNum => currentGlobalGameState.diceRolls[pNum] !== null && currentGlobalGameState.diceRolls[pNum] !== -1);
+
+                        if (allRolled) {
+                            runTransaction(db, async (transaction) => {
+                                const freshGameDoc = await transaction.get(gameDocRef);
+                                if (!freshGameDoc.exists()) throw "Game document not found for dice finalization.";
+                                const freshGameData = freshGameDoc.data();
+
+                                if (freshGameData.gameState === STATE_DICE_ROLL_SETUP) { 
+                                    const rolls = [];
+                                    activePlayersForDice.forEach(pNum => {
+                                        rolls.push([freshGameData.diceRolls[pNum], pNum]);
+                                    });
+
+                                    rolls.sort((a, b) => {
+                                        if (b[0] !== a[0]) return b[0] - a[0]; 
+                                        return a[1] - b[1]; 
+                                    });
+                                    const newPlayerOrder = rolls.map(item => item[1]);
+                                    const firstPlayerToPlace = newPlayerOrder[0];
+
+                                    transaction.update(gameDocRef, {
+                                        playerOrder: newPlayerOrder,
+                                        gameState: STATE_PIECE_PLACEMENT,
+                                        placementPlayer: firstPlayerToPlace,
+                                        currentPlayer: firstPlayerToPlace, 
+                                        turnContext: { player: firstPlayerToPlace, startTime: serverTimestamp() }, 
+                                        lastMessage: `주사위 순서: ${newPlayerOrder.map(p=>`P${p}`).join(', ')}. P${firstPlayerToPlace}부터 말 배치 시작.`,
+                                        updatedAt: serverTimestamp()
+                                    });
+                                }
+                            }).catch(error => {
+                                console.error("Dice roll finalization transaction error:", error);
+                            });
+                        }
+                    }
+                    // --- End Dice Roll Completion Logic ---
+
+                    if (newRemoteState.currentPlayer !== previousPlayer ||
+                        (oldGameState !== newRemoteState.gameState &&
+                         (newRemoteState.gameState === STATE_AWAIT_PIECE_SELECTION || newRemoteState.gameState === STATE_PIECE_PLACEMENT)) ||
+                        (oldTurnContext?.player !== newRemoteState.turnContext?.player) 
+                       ) {
+                        if (newRemoteState.currentPlayer === localPlayerNumber &&
+                            (newRemoteState.gameState === STATE_AWAIT_PIECE_SELECTION || newRemoteState.gameState === STATE_AWAIT_MOVE || newRemoteState.gameState === STATE_PIECE_PLACEMENT)
+                           ) {
+                            activePiece = null;
+                            movesMadeThisTurn = 0;
+                            pieceActionLocked = false;
+                            startLocalTurnTimer(); 
+                        } else {
+                            clearLocalTurnTimer(); 
+                        }
+                    }
+                    if (JSON.stringify(oldTurnContext) !== JSON.stringify(newRemoteState.turnContext) || oldGameState !== newRemoteState.gameState) {
+                         startGlobalTimerDisplayUpdater();
+                    }
+
+
+                    updateUIFromGameState();
+                } else {
+                    if (currentGameId === gameId) { 
+                        showModal("게임 오류", "게임 데이터를 찾을 수 없습니다. 메인 화면으로 돌아갑니다.");
+                        resetToInitialScreen();
+                    }
+                }
+            }, (error) => {
+                console.error("Error in game listener:", error);
+                showModal("연결 오류", "게임 서버와 연결이 끊어졌습니다: " + error.message);
+            });
+        }
+
+        function updateUIFromGameState() {
+            if (!currentGlobalGameState) return;
+            if (!localPlayerNumber && userId) { 
+                if (currentGlobalGameState.player1Id === userId) localPlayerNumber = PLAYER1;
+                else if (currentGlobalGameState.player2Id === userId) localPlayerNumber = PLAYER2;
+                else if (currentGlobalGameState.player3Id === userId) localPlayerNumber = PLAYER3;
+            }
+
+            gameIdDisplay.textContent = currentGameId;
+            if (localPlayerNumber) {
+                yourPlayerNumberGame.textContent = `플레이어 ${localPlayerNumber}`;
+                yourPlayerNumberLobby.textContent = `플레이어 ${localPlayerNumber}`;
+            } else {
+                yourPlayerNumberGame.textContent = `관전 중`;
+                yourPlayerNumberLobby.textContent = `관전 중`;
+            }
+
+
+            const isThreePlayerGameActive = currentGlobalGameState.playerPiecesConfig && currentGlobalGameState.playerPiecesConfig[PLAYER3] > 0;
+            p3ScoreDisplayElement.classList.toggle('hidden', !isThreePlayerGameActive);
+            startDiceRollBtn.classList.add('hidden'); 
+
+            boardContainer.classList.add('hidden');
+            document.querySelector('.flex.flex-col.md\\:flex-row.gap-6').classList.add('hidden'); 
+
+
+            switch (currentGlobalGameState.gameState) {
+                case STATE_LOBBY:
+                    lobbyGameIdElement.textContent = currentGameId;
+                    let lobbyMsg = "";
+                    const cfg = currentGlobalGameState.playerPiecesConfig;
+                    const isP3Expected = cfg && cfg[PLAYER3] > 0;
+
+                    const p1Id = currentGlobalGameState.player1Id;
+                    const p2Id = currentGlobalGameState.player2Id;
+                    const p3Id = currentGlobalGameState.player3Id;
+
+                    let allExpectedJoined = false;
+
+                    if (isP3Expected) { // 3-player game
+                        if (p1Id && p2Id && p3Id) {
+                            allExpectedJoined = true;
+                        } else if (!p2Id && cfg[PLAYER2] > 0) { // P2 is expected and not joined
+                            lobbyMsg = "플레이어 2를 기다리는 중...";
+                        } else if (p2Id && !p3Id && cfg[PLAYER3] > 0) { // P2 joined, P3 expected and not joined
+                            lobbyMsg = "플레이어 3을 기다리는 중...";
+                        } else if (!p2Id && !p3Id && cfg[PLAYER2] > 0 && cfg[PLAYER3] > 0) { // P1 joined, P2 and P3 needed
+                             lobbyMsg = "플레이어 2와 3을 기다리는 중...";
+                        } else if (!p2Id && cfg[PLAYER2] > 0 ) { // Default if P1 is there, P2 needed
+                            lobbyMsg = "플레이어 2를 기다리는 중...";
+                        } else { // Should not happen if P1 is creator
+                            lobbyMsg = "플레이어들을 기다리는 중...";
+                        }
+                    } else { // 2-player game
+                        if (p1Id && p2Id) {
+                            allExpectedJoined = true;
+                        } else if (!p2Id && cfg[PLAYER2] > 0) { // P2 is expected and not joined
+                            lobbyMsg = "플레이어 2를 기다리는 중...";
+                        } else { // P1 joined, P2 needed (covers case where p1Id is true)
+                            lobbyMsg = "플레이어 2를 기다리는 중...";
+                        }
+                    }
+
+                    if (allExpectedJoined) {
+                        lobbyMsg = "모든 플레이어 참가! 방장이 주사위 굴리기를 시작합니다.";
+                        if (localPlayerNumber === PLAYER1) {
+                            startDiceRollBtn.classList.remove('hidden');
+                        } else {
+                            startDiceRollBtn.classList.add('hidden');
+                        }
+                    } else {
+                        startDiceRollBtn.classList.add('hidden');
+                    }
+
+                    lobbyStatusElement.textContent = lobbyMsg;
+                    showScreen('lobby-screen');
+                    break;
+                case STATE_DICE_ROLL_SETUP:
+                    showScreen('game-play-screen');
+                    diceRollUiArea.classList.remove('hidden');
+                    boardContainer.classList.add('hidden'); 
+                    document.querySelector('.flex.flex-col.md\\:flex-row.gap-6').classList.add('hidden'); 
+
+                    updateDiceRollDisplay();
+                    if (currentGlobalGameState.diceRolls[localPlayerNumber] === null && currentGlobalGameState.playerPiecesConfig[localPlayerNumber] > 0) {
+                        rollMyDiceBtn.disabled = false;
+                        rollMyDiceBtn.classList.remove('disabled-button');
+                        diceRollStatusMessage.textContent = "주사위를 굴려주세요.";
+                    } else if (currentGlobalGameState.diceRolls[localPlayerNumber] !== null) {
+                        rollMyDiceBtn.disabled = true;
+                        rollMyDiceBtn.classList.add('disabled-button');
+                        diceRollStatusMessage.textContent = "다른 플레이어들을 기다리는 중...";
+                    } else { 
+                        diceRollStatusMessage.textContent = "관전 중입니다.";
+                        rollMyDiceBtn.disabled = true;
+                        rollMyDiceBtn.classList.add('disabled-button');
+                    }
+                    messageAreaElement.textContent = currentGlobalGameState.lastMessage || "주사위를 굴려 순서를 결정합니다.";
+                    turnIndicatorElement.textContent = "순서 결정 중";
+                    break;
+                case STATE_PIECE_PLACEMENT:
+                    showScreen('game-play-screen');
+                    diceRollUiArea.classList.add('hidden');
+                    boardContainer.classList.remove('hidden');
+                    document.querySelector('.flex.flex-col.md\\:flex-row.gap-6').classList.remove('hidden');
+                    updateTurnIndicatorForPlacement();
+                    renderBoard();
+                    updateMessageArea();
+                    break;
+                case STATE_AWAIT_PIECE_SELECTION:
+                case STATE_AWAIT_MOVE:
+                case STATE_AWAIT_WALL_PLACEMENT:
+                    showScreen('game-play-screen');
+                    diceRollUiArea.classList.add('hidden');
+                    boardContainer.classList.remove('hidden');
+                    document.querySelector('.flex.flex-col.md\\:flex-row.gap-6').classList.remove('hidden');
+                    updateTurnIndicator();
+                    updateMessageArea();
+                    renderBoard();
+                    break;
+                case STATE_GAME_OVER:
+                    showScreen('game-play-screen');
+                    diceRollUiArea.classList.add('hidden');
+                    boardContainer.classList.remove('hidden');
+                    document.querySelector('.flex.flex-col.md\\:flex-row.gap-6').classList.remove('hidden');
+                    renderBoard(); 
+                    updateTurnIndicator();
+                    updateMessageArea(); 
+                    clearLocalTurnTimer(); 
+                    stopGlobalTimerDisplayUpdater(); 
+                    if (modal.classList.contains('hidden')) { 
+                        let winnerMsg = currentGlobalGameState.lastMessage || "게임 종료";
+
+                        let scoreDetails = `(P1: ${currentGlobalGameState.areaScores[PLAYER1]} vs P2: ${currentGlobalGameState.areaScores[PLAYER2]}`;
+                        if (isThreePlayerGameActive) {
+                            scoreDetails += ` vs P3: ${currentGlobalGameState.areaScores[PLAYER3]}`;
+                        }
+                        scoreDetails += ")";
+                        showModal("게임 종료", `${winnerMsg} ${scoreDetails}`);
+                    }
+                    break;
+                default:
+                    showScreen('initial-screen');
+                    break;
+            }
+
+            if (p1AreaScoreElement) p1AreaScoreElement.textContent = currentGlobalGameState.areaScores[PLAYER1] || 0;
+            if (p2AreaScoreElement) p2AreaScoreElement.textContent = currentGlobalGameState.areaScores[PLAYER2] || 0;
+            if (p3AreaScoreElement && isThreePlayerGameActive) p3AreaScoreElement.textContent = currentGlobalGameState.areaScores[PLAYER3] || 0;
+        }
+
+        function updateDiceRollDisplay() {
+            if (!currentGlobalGameState || !diceRollResultsDisplay) return;
+            diceRollResultsDisplay.innerHTML = '';
+            const activePlayers = [PLAYER1, PLAYER2, PLAYER3].filter(pNum => currentGlobalGameState.playerPiecesConfig[pNum] > 0);
+
+            activePlayers.forEach(pNum => {
+                const rollValue = currentGlobalGameState.diceRolls[pNum];
+                const pDiv = document.createElement('div');
+                pDiv.classList.add('dice-roll-display');
+                let text = `플레이어 ${pNum}: `;
+                if (rollValue === null) {
+                    text += "굴리는 중...";
+                } else if (rollValue === -1) { 
+                    text += " (대기)";
+                } else {
+                    text += ` ${rollValue}`;
+                }
+                pDiv.textContent = text;
+                diceRollResultsDisplay.appendChild(pDiv);
+            });
+        }
+
+
+        function updateMessageArea() {
+            if (!messageAreaElement || !currentGlobalGameState) return;
+
+            if (currentGlobalGameState.lastMessage &&
+                (currentGlobalGameState.gameState === STATE_GAME_OVER ||
+                 currentGlobalGameState.gameState === STATE_DICE_ROLL_SETUP)) {
+                messageAreaElement.textContent = currentGlobalGameState.lastMessage;
+                return;
+            }
+
+            switch (currentGlobalGameState.gameState) {
+                case STATE_PIECE_PLACEMENT:
+                    const placementP = currentGlobalGameState.placementPlayer;
+                    const remaining = currentGlobalGameState.piecesToPlace[placementP];
+                    messageAreaElement.textContent = `플레이어 ${placementP} 말 배치 (${remaining}개 남음). 빈 칸을 클릭하세요.`;
+                    break;
+                case STATE_AWAIT_PIECE_SELECTION:
+                    messageAreaElement.textContent = `플레이어 ${currentGlobalGameState.currentPlayer}: 움직일 말을 선택하세요.`;
+                    break;
+                case STATE_AWAIT_MOVE:
+                    if (!activePiece) { 
+                        messageAreaElement.textContent = `플레이어 ${currentGlobalGameState.currentPlayer}: 움직일 말을 선택하세요.`;
+                    } else {
+                        messageAreaElement.textContent = `플레이어 ${currentGlobalGameState.currentPlayer}: 말 이동 (${MAX_MOVES_PER_TURN - movesMadeThisTurn}번 남음). 이동할 칸 또는 현재 위치(벽 설치)를 클릭하세요.`;
+                    }
+                    break;
+                case STATE_AWAIT_WALL_PLACEMENT:
+                    messageAreaElement.textContent = `플레이어 ${currentGlobalGameState.currentPlayer}: 벽을 설치하세요. (말 주변의 보라색 영역 클릭)`;
+                    break;
+                case STATE_GAME_OVER: 
+                    let winnerMsg = "";
+                    if (currentGlobalGameState.winner === PLAYER1) winnerMsg = `플레이어 1 승리!`;
+                    else if (currentGlobalGameState.winner === PLAYER2) winnerMsg = `플레이어 2 승리!`;
+                    else if (currentGlobalGameState.winner === PLAYER3) winnerMsg = `플레이어 3 승리!`;
+                    else if (currentGlobalGameState.winner === 'draw') winnerMsg = "무승부!";
+                    else winnerMsg = "게임 종료";
+
+                    let scoreDetails = `(P1: ${currentGlobalGameState.areaScores[PLAYER1]} vs P2: ${currentGlobalGameState.areaScores[PLAYER2]}`;
+                    if (currentGlobalGameState.playerPiecesConfig[PLAYER3] > 0) {
+                        scoreDetails += ` vs P3: ${currentGlobalGameState.areaScores[PLAYER3]}`;
+                    }
+                    scoreDetails += ")";
+                    messageAreaElement.textContent = `${winnerMsg} ${scoreDetails}`;
+                    break;
+                default:
+                    messageAreaElement.textContent = currentGlobalGameState.lastMessage || ""; 
+            }
+        }
+
+
+        function renderBoard() {
+            if (!boardContainer || !currentGlobalGameState.gridSize) return;
+            boardContainer.innerHTML = ''; 
+
+            const boardRenderWidth = boardContainer.clientWidth;
+            const boardRenderHeight = boardContainer.clientHeight;
+
+            const cellWidth = boardRenderWidth / currentGlobalGameState.gridSize;
+            const cellHeight = boardRenderHeight / currentGlobalGameState.gridSize;
+
+            boardContainer.style.gridTemplateColumns = `repeat(${currentGlobalGameState.gridSize}, 1fr)`;
+
+            const areas = (currentGlobalGameState.gameState !== STATE_PIECE_PLACEMENT &&
+                currentGlobalGameState.gameState !== STATE_LOBBY &&
+                currentGlobalGameState.gameState !== STATE_GAME_SETUP &&
+                currentGlobalGameState.gameState !== STATE_DICE_ROLL_SETUP &&
+                currentGlobalGameState.gameState !== STATE_INITIAL
+                ) ? findEnclosedAreas() : [];
+            const cellElements = [];
+
+            for (let r = 0; r < currentGlobalGameState.gridSize; r++) {
+                cellElements[r] = [];
+                for (let c = 0; c < currentGlobalGameState.gridSize; c++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell');
+                    cell.dataset.r = r;
+                    cell.dataset.c = c;
+
+                    const borderColor = '#9ca3af'; // gray-400
+                    if (r < currentGlobalGameState.gridSize - 1) cell.style.borderBottom = `1px solid ${borderColor}`;
+                    if (c < currentGlobalGameState.gridSize - 1) cell.style.borderRight = `1px solid ${borderColor}`;
+
+                    cell.classList.remove('valid-move-highlight', 'placement-cell-highlight', 'area-highlight-p1', 'area-highlight-p2', 'area-highlight-p3', 'area-highlight-contested');
+
+                    if (currentGlobalGameState.gameState !== STATE_PIECE_PLACEMENT && currentGlobalGameState.gameState !== STATE_LOBBY && currentGlobalGameState.gameState !== STATE_INITIAL && currentGlobalGameState.gameState !== STATE_DICE_ROLL_SETUP) {
+                        const cellArea = areas.find(area => area.cells.some(ac => ac.r === r && ac.c === c));
+                        if (cellArea) {
+                            if (cellArea.owner === PLAYER1) cell.classList.add('area-highlight-p1');
+                            else if (cellArea.owner === PLAYER2) cell.classList.add('area-highlight-p2');
+                            else if (cellArea.owner === PLAYER3) cell.classList.add('area-highlight-p3');
+                            else if (cellArea.owner === 'contested') cell.classList.add('area-highlight-contested');
+                        }
+                    }
+
+                    if (currentGlobalGameState.gameState === STATE_PIECE_PLACEMENT &&
+                        currentGlobalGameState.placementPlayer === localPlayerNumber &&
+                        !isCellOccupied(r,c)) {
+                        cell.classList.add('placement-cell-highlight');
+                    } else if (currentGlobalGameState.gameState === STATE_AWAIT_MOVE && activePiece &&
+                        currentGlobalGameState.currentPlayer === localPlayerNumber) {
+                        if (isValidMove(activePiece.r, activePiece.c, r, c, activePiece.player)) {
+                            const occupant = getPieceAt(r, c);
+                            if ((r === activePiece.r && c === activePiece.c) || !occupant ) { 
+                                cell.classList.add('valid-move-highlight');
+                            }
+                        }
+                    }
+
+                    cell.addEventListener('click', () => onCellClick(r, c));
+                    boardContainer.appendChild(cell);
+                    cellElements[r][c] = cell;
+                }
+            }
+
+            [PLAYER1, PLAYER2, PLAYER3].forEach(player => {
+                if (currentGlobalGameState.playerPositions && currentGlobalGameState.playerPositions[player]) {
+                    currentGlobalGameState.playerPositions[player].forEach(piece => {
+                        const pieceElement = document.createElement('div');
+                        pieceElement.classList.add('player-piece', `player${piece.player}-piece`);
+                        pieceElement.textContent = `P${piece.player}`;
+                        pieceElement.dataset.id = piece.id; 
+
+                        pieceElement.classList.remove('selected-piece-visual');
+                        if (activePiece && activePiece.id === piece.id && localPlayerNumber === currentGlobalGameState.currentPlayer) {
+                            if (currentGlobalGameState.gameState === STATE_AWAIT_PIECE_SELECTION ||
+                                currentGlobalGameState.gameState === STATE_AWAIT_MOVE ||
+                                currentGlobalGameState.gameState === STATE_AWAIT_WALL_PLACEMENT) { 
+                                pieceElement.classList.add('selected-piece-visual');
+                            }
+                        }
+
+                        const targetCell = cellElements[piece.r]?.[piece.c];
+                        if(targetCell) {
+                            targetCell.appendChild(pieceElement);
+                        } else {
+                            console.error(`Cell (${piece.r}, ${piece.c}) not found for piece ${piece.id}. Player positions:`, JSON.stringify(currentGlobalGameState.playerPositions));
+                        }
+                    });
+                }
+            });
+
+            drawWalls(cellWidth, cellHeight);
+
+            if (currentGlobalGameState.gameState === STATE_AWAIT_WALL_PLACEMENT && activePiece &&
+                currentGlobalGameState.currentPlayer === localPlayerNumber) {
+                drawWallPlacementGuides(cellWidth, cellHeight, activePiece);
+            }
+        }
+
+        function drawWalls(cellWidth, cellHeight) {
+            const hWallsData = currentGlobalGameState.hWalls;
+            const vWallsData = currentGlobalGameState.vWalls;
+
+            if (!hWallsData || !vWallsData) return;
+
+            for (let r = 0; r < currentGlobalGameState.gridSize - 1; r++) {
+                for (let c = 0; c < currentGlobalGameState.gridSize; c++) {
+                    if (hWallsData[r]?.[c] && hWallsData[r][c] !== EMPTY) {
+                        const wall = document.createElement('div');
+                        wall.classList.add('wall', 'horizontal-wall', `player${hWallsData[r][c]}-wall`);
+                        wall.style.width = `${cellWidth -2}px`; 
+                        wall.style.left = `${c * cellWidth + 1}px`;
+                        wall.style.top = `${(r + 1) * cellHeight - 3}px`; 
+                        boardContainer.appendChild(wall);
+                    }
+                }
+            }
+            for (let r = 0; r < currentGlobalGameState.gridSize; r++) {
+                for (let c = 0; c < currentGlobalGameState.gridSize - 1; c++) {
+                    if (vWallsData[r]?.[c] && vWallsData[r][c] !== EMPTY) {
+                        const wall = document.createElement('div');
+                        wall.classList.add('wall', 'vertical-wall', `player${vWallsData[r][c]}-wall`);
+                        wall.style.height = `${cellHeight - 2}px`; 
+                        wall.style.top = `${r * cellHeight + 1}px`;
+                        wall.style.left = `${(c + 1) * cellWidth - 3}px`; 
+                        boardContainer.appendChild(wall);
+                    }
+                }
+            }
+        }
+
+        function drawWallPlacementGuides(cellWidth, cellHeight, pieceToPlaceWallAround) {
+            const { r, c } = pieceToPlaceWallAround; 
+            const guideThickness = 8; // px
+            const hWallsData = currentGlobalGameState.hWalls;
+            const vWallsData = currentGlobalGameState.vWalls;
+
+            if (!hWallsData || !vWallsData) return;
+
+            if (r > 0 && hWallsData[r-1]?.[c] === EMPTY) {
+                createGuide(c * cellWidth, (r * cellHeight) - guideThickness / 2, cellWidth, guideThickness, 'h', r - 1, c);
+            }
+            if (r < currentGlobalGameState.gridSize - 1 && hWallsData[r]?.[c] === EMPTY) {
+                createGuide(c * cellWidth, ((r + 1) * cellHeight) - guideThickness / 2, cellWidth, guideThickness, 'h', r, c);
+            }
+            if (c > 0 && vWallsData[r]?.[c-1] === EMPTY) {
+                createGuide((c * cellWidth) - guideThickness / 2, r * cellHeight, guideThickness, cellHeight, 'v', r, c - 1);
+            }
+            if (c < currentGlobalGameState.gridSize - 1 && vWallsData[r]?.[c] === EMPTY) {
+                createGuide(((c + 1) * cellWidth) - guideThickness / 2, r * cellHeight, guideThickness, cellHeight, 'v', r, c);
+            }
+        }
+
+        function createGuide(x, y, w, h, type, wallR, wallC) {
+            const guide = document.createElement('div');
+            guide.classList.add('wall-placement-guide');
+            guide.style.left = `${x}px`;
+            guide.style.top = `${y}px`;
+            guide.style.width = `${w}px`;
+            guide.style.height = `${h}px`;
+            guide.dataset.type = type; 
+            guide.dataset.r = wallR;   
+            guide.dataset.c = wallC;   
+            guide.addEventListener('click', onWallGuideClick);
+            boardContainer.appendChild(guide);
+        }
+
+        async function onCellClick(r, c) {
+            if (currentGlobalGameState.gameState === STATE_GAME_OVER) return;
+            if (!localPlayerNumber || !userId) {
+                showModal("오류", "플레이어 정보가 없거나 인증되지 않았습니다.");
+                return;
+            }
+
+            if (currentGlobalGameState.gameState === STATE_PIECE_PLACEMENT) {
+                if (currentGlobalGameState.placementPlayer !== localPlayerNumber) {
+                    showModal("알림", "상대방의 말 배치 차례입니다."); return;
+                }
+                await handlePiecePlacementClick(r, c);
+            }
+            else if (currentGlobalGameState.currentPlayer === localPlayerNumber) { 
+                const pieceOnCell = getPieceAt(r, c); 
+
+                if (currentGlobalGameState.gameState === STATE_AWAIT_PIECE_SELECTION ||
+                   (currentGlobalGameState.gameState === STATE_AWAIT_MOVE && !activePiece)) { 
+                    if (pieceOnCell && pieceOnCell.player === localPlayerNumber) {
+                        if (pieceActionLocked) { 
+                            showModal("알림", "이번 턴에는 이미 다른 말을 움직였습니다. 해당 말만 조작할 수 있습니다.");
+                            return;
+                        }
+                        activePiece = { ...pieceOnCell }; 
+                        movesMadeThisTurn = 0; 
+                        try {
+                            await updateDoc(getGameDocRef(currentGameId), {
+                                gameState: STATE_AWAIT_MOVE,
+                                lastMessage: `플레이어 ${localPlayerNumber}: 말 이동 (${MAX_MOVES_PER_TURN - movesMadeThisTurn}번 남음).`,
+                                updatedAt: serverTimestamp()
+                            });
+                        } catch (error) {
+                            console.error("Error setting state to AWAIT_MOVE:", error);
+                            showModal("오류", "상태 변경 중 오류: " + error.message);
+                        }
+                    } else {
+                        showModal("알림", "움직일 자신의 말을 선택하세요.");
+                    }
+                }
+                else if (currentGlobalGameState.gameState === STATE_AWAIT_MOVE && activePiece) { 
+                    if (pieceOnCell && pieceOnCell.player === localPlayerNumber && pieceOnCell.id !== activePiece.id) {
+                        if (pieceActionLocked) { 
+                            showModal("알림", "이미 말을 움직였습니다. 다른 말은 선택할 수 없습니다.");
+                            return;
+                        } else { 
+                            activePiece = { ...pieceOnCell };
+                            movesMadeThisTurn = 0; 
+                            renderBoard(); 
+                            updateMessageArea(); 
+                            return;
+                        }
+                    }
+                    handleLocalMove(r, c); 
+                }
+            }
+            else if (currentGlobalGameState.gameState !== STATE_GAME_OVER && currentGlobalGameState.gameState !== STATE_DICE_ROLL_SETUP) { 
+                showModal("알림", "상대방의 턴입니다.");
+            }
+        }
+
+
+        async function handlePiecePlacementClick(r, c) {
+            if (isCellOccupied(r,c)) {
+                showModal("알림", "이미 말이 있는 칸입니다. 다른 칸을 선택하세요."); return;
+            }
+
+            const gameDocRef = getGameDocRef(currentGameId);
+            try {
+                await runTransaction(db, async (transaction) => {
+                    const gameDoc = await transaction.get(gameDocRef);
+                    if (!gameDoc.exists()) throw new Error("게임 데이터를 찾을 수 없습니다.");
+
+                    let data = gameDoc.data();
+                    if (!data.playerPositions) data.playerPositions = {};
+                    [PLAYER1, PLAYER2, PLAYER3].forEach(p => {
+                        if (!data.playerPositions[p]) data.playerPositions[p] = [];
+                    });
+
+                    if (data.gameState !== STATE_PIECE_PLACEMENT || data.placementPlayer !== localPlayerNumber) {
+                        throw new Error("잘못된 차례이거나 게임 상태가 아닙니다.");
+                    }
+                    const tempOccupiedCheck = (row, col) => {
+                        return [PLAYER1, PLAYER2, PLAYER3].some(p =>
+                            data.playerPositions[p] && data.playerPositions[p].find(piece => piece.r === row && piece.c === col)
+                        );
+                    };
+                    if (tempOccupiedCheck(r,c)) {
+                        throw new Error("이미 말이 있는 칸입니다 (서버 확인).");
+                    }
+
+                    const newPiece = { r, c, player: localPlayerNumber, id: `piece_${localPlayerNumber}_${data.playerPositions[localPlayerNumber].length}` };
+                    const updatedPlayerPositions = { ...data.playerPositions }; 
+                    updatedPlayerPositions[localPlayerNumber] = [...updatedPlayerPositions[localPlayerNumber], newPiece];
+
+                    const updatedPiecesToPlace = { ...data.piecesToPlace };
+                    updatedPiecesToPlace[localPlayerNumber]--;
+
+                    let nextPlacementPlayer = null;
+                    let nextGameState = data.gameState;
+                    let gameStartingPlayer = data.playerOrder[0]; 
+                    let message = `플레이어 ${localPlayerNumber}이(가) (${r},${c})에 말을 놓았습니다.`;
+                    let nextPlayerForTurnContext = null;
+
+                    const allPiecesPlacedByAllPlayers = data.playerOrder.every(pNum => updatedPiecesToPlace[pNum] === 0);
+
+                    if (allPiecesPlacedByAllPlayers) {
+                        nextGameState = STATE_AWAIT_PIECE_SELECTION;
+                        message = `모든 말 배치 완료. 플레이어 ${gameStartingPlayer} 턴 시작.`;
+                        nextPlacementPlayer = gameStartingPlayer; 
+                        nextPlayerForTurnContext = gameStartingPlayer;
+                    } else {
+                        const currentPlayerOrderIndex = data.playerOrder.indexOf(data.placementPlayer);
+                        let foundNextPlayerToPlace = false;
+                        for (let i = 1; i <= data.playerOrder.length; i++) { 
+                            const nextPlayerIndexInOrder = (currentPlayerOrderIndex + i) % data.playerOrder.length;
+                            const potentialNextPlayer = data.playerOrder[nextPlayerIndexInOrder];
+
+                            if (updatedPiecesToPlace[potentialNextPlayer] > 0) { 
+                                nextPlacementPlayer = potentialNextPlayer;
+                                foundNextPlayerToPlace = true;
+                                break;
+                            }
+                        }
+
+                        if (!foundNextPlayerToPlace) { 
+                            console.error("Logic error: All pieces not placed, but no next placement player found.");
+                            nextGameState = STATE_AWAIT_PIECE_SELECTION; 
+                            nextPlacementPlayer = gameStartingPlayer;
+                            message = `[오류] 말 배치 강제 종료. 플레이어 ${gameStartingPlayer} 턴 시작.`;
+                            nextPlayerForTurnContext = gameStartingPlayer;
+                        } else {
+                            message += ` 다음은 플레이어 ${nextPlacementPlayer} 말 배치 차례. (${updatedPiecesToPlace[nextPlacementPlayer]}개 남음)`;
+                            nextPlayerForTurnContext = nextPlacementPlayer;
+                        }
+                    }
+
+                    const updatePayload = {
+                        playerPositions: updatedPlayerPositions,
+                        piecesToPlace: updatedPiecesToPlace,
+                        placementPlayer: nextPlacementPlayer, 
+                        gameState: nextGameState,
+                        updatedAt: serverTimestamp(),
+                        lastMessage: message,
+                        turnContext: { player: nextPlayerForTurnContext, startTime: serverTimestamp() } 
+                    };
+
+                    if (nextGameState === STATE_AWAIT_PIECE_SELECTION) {
+                        updatePayload.currentPlayer = gameStartingPlayer; 
+                    }
+                    transaction.update(gameDocRef, updatePayload);
+                });
+            } catch (error) {
+                console.error("Error placing piece:", error);
+                showModal("배치 오류", "말을 배치할 수 없습니다: " + error.message);
+            }
+        }
+
+        async function handleLocalMove(r, c) {
+            if (!activePiece) {
+                showModal("오류", "먼저 움직일 말을 선택하세요.");
+                return;
+            }
+
+            if (r === activePiece.r && c === activePiece.c) {
+                try {
+                    await updateDoc(getGameDocRef(currentGameId), {
+                        gameState: STATE_AWAIT_WALL_PLACEMENT,
+                        playerPositions: currentGlobalGameState.playerPositions, 
+                        lastMessage: `플레이어 ${localPlayerNumber}: 벽을 설치하세요.`,
+                        updatedAt: serverTimestamp()
+                    });
+                } catch (error) {
+                    console.error("Error transitioning to wall placement (click same piece):", error);
+                    showModal("오류", "벽 설치 상태로 전환 중 오류 발생: " + error.message);
+                }
+                return;
+            }
+
+            if (isValidMove(activePiece.r, activePiece.c, r, c, activePiece.player)) {
+                if (getPieceAt(r,c)) { 
+                    showModal("이동 불가", "이동하려는 칸에 이미 다른 말이 있습니다.");
+                    return;
+                }
+
+                let newPlayerPositions = JSON.parse(JSON.stringify(currentGlobalGameState.playerPositions));
+                const playerPieces = newPlayerPositions[localPlayerNumber];
+                const pieceIndex = playerPieces.findIndex(p => p.id === activePiece.id);
+
+                if (pieceIndex !== -1) {
+                    playerPieces[pieceIndex].r = r;
+                    playerPieces[pieceIndex].c = c;
+                } else {
+                    console.error("Logic error: Active piece not found in newPlayerPositions array during move.");
+                    return; 
+                }
+
+                currentGlobalGameState.playerPositions = newPlayerPositions;
+                activePiece.r = r;
+                activePiece.c = c;
+
+                movesMadeThisTurn++;
+                pieceActionLocked = true; 
+
+                let message = `플레이어 ${localPlayerNumber}이(가) 말을 (${playerPieces[pieceIndex].r},${playerPieces[pieceIndex].c})에서 (${r},${c})로 이동.`;
+                let nextGameStateForFirestore = STATE_AWAIT_MOVE;
+
+                if (movesMadeThisTurn >= MAX_MOVES_PER_TURN) {
+                    nextGameStateForFirestore = STATE_AWAIT_WALL_PLACEMENT;
+                    message += ` 이제 벽을 설치하세요.`;
+                } else {
+                    message += ` (${MAX_MOVES_PER_TURN - movesMadeThisTurn}번 더 이동 가능).`;
+                }
+
+                try {
+                    await updateDoc(getGameDocRef(currentGameId), {
+                        gameState: nextGameStateForFirestore,
+                        playerPositions: newPlayerPositions, 
+                        lastMessage: message,
+                        updatedAt: serverTimestamp()
+                    });
+                } catch (error) {
+                    console.error("Error updating Firestore after move:", error);
+                    showModal("오류", "이동 정보 업데이트 중 오류 발생: " + error.message);
+                }
+            } else {
+                showModal("이동 불가", "유효한 이동 경로가 아닙니다 (벽 또는 맵 밖).");
+            }
+        }
+
+
+        async function onWallGuideClick(event) {
+            if (currentGlobalGameState.gameState !== STATE_AWAIT_WALL_PLACEMENT || !activePiece || currentGlobalGameState.currentPlayer !== localPlayerNumber) {
+                if (currentGlobalGameState.currentPlayer !== localPlayerNumber && currentGlobalGameState.gameState !== STATE_GAME_OVER) showModal("알림", "상대방의 턴입니다.");
+                return;
+            }
+            clearLocalTurnTimer(); 
+
+            const guide = event.target;
+            const type = guide.dataset.type;
+            const r_wall = parseInt(guide.dataset.r);
+            const c_wall = parseInt(guide.dataset.c);
+
+            const gameDocRef = getGameDocRef(currentGameId);
+            try {
+                await runTransaction(db, async (transaction) => {
+                    const gameDoc = await transaction.get(gameDocRef);
+                    if (!gameDoc.exists()) throw new Error("게임 데이터를 찾을 수 없습니다.");
+                    let data = gameDoc.data(); 
+
+                    let currentFirestorePlayerPositions = JSON.parse(JSON.stringify(data.playerPositions));
+                    let newHWalls = JSON.parse(data.hWalls); 
+                    let newVWalls = JSON.parse(data.vWalls); 
+
+                    if (data.gameState !== STATE_AWAIT_WALL_PLACEMENT || data.currentPlayer !== localPlayerNumber) {
+                        throw new Error("잘못된 차례이거나 벽을 놓을 수 없는 상태입니다 (서버).");
+                    }
+
+                    let wallPlaced = false;
+                    if (type === 'h' && newHWalls[r_wall]?.[c_wall] === EMPTY) {
+                        newHWalls[r_wall][c_wall] = localPlayerNumber;
+                        wallPlaced = true;
+                    } else if (type === 'v' && newVWalls[r_wall]?.[c_wall] === EMPTY) {
+                        newVWalls[r_wall][c_wall] = localPlayerNumber;
+                        wallPlaced = true;
+                    } else {
+                        throw new Error("이미 벽이 있거나 잘못된 위치입니다.");
+                    }
+
+                    if (wallPlaced) {
+                        const tempGameStateForCalc = {
+                            ...data, 
+                            hWalls: newHWalls,
+                            vWalls: newVWalls,
+                            playerPositions: currentFirestorePlayerPositions, 
+                            gridSize: data.gridSize 
+                        };
+                        const areas = findEnclosedAreasWithState(tempGameStateForCalc);
+                        const newAreaScores = { [PLAYER1]:0, [PLAYER2]:0, [PLAYER3]:0 };
+
+                        areas.forEach(area => {
+                            if (area.owner !== 'contested' && area.owner !== EMPTY) {
+                                newAreaScores[area.owner] = (newAreaScores[area.owner] || 0) + area.cells.length;
+                            }
+                        });
+
+                        let nextGameState = STATE_AWAIT_PIECE_SELECTION;
+                        let nextPlayer;
+                        const currentOrderIndex = data.playerOrder.indexOf(data.currentPlayer);
+                        const nextOrderIndex = (currentOrderIndex + 1) % data.playerOrder.length;
+                        nextPlayer = data.playerOrder[nextOrderIndex];
+
+                        let winner = null;
+                        let message = `플레이어 ${localPlayerNumber}이(가) 벽을 설치했습니다. 다음은 플레이어 ${nextPlayer} 턴.`;
+                        let nextTurnContext = { player: nextPlayer, startTime: serverTimestamp() };
+
+                        if (checkGameEndWithState(areas)) {
+                            nextGameState = STATE_GAME_OVER;
+                            nextTurnContext = null; 
+                            const isThreePlayerGameActiveForWin = data.playerPiecesConfig[PLAYER3] > 0;
+                            if (isThreePlayerGameActiveForWin) {
+                                if (newAreaScores[PLAYER1] > newAreaScores[PLAYER2] && newAreaScores[PLAYER1] > newAreaScores[PLAYER3]) winner = PLAYER1;
+                                else if (newAreaScores[PLAYER2] > newAreaScores[PLAYER1] && newAreaScores[PLAYER2] > newAreaScores[PLAYER3]) winner = PLAYER2;
+                                else if (newAreaScores[PLAYER3] > newAreaScores[PLAYER1] && newAreaScores[PLAYER3] > newAreaScores[PLAYER2]) winner = PLAYER3;
+                                else winner = 'draw';
+                            } else {
+                                if (newAreaScores[PLAYER1] > newAreaScores[PLAYER2]) winner = PLAYER1;
+                                else if (newAreaScores[PLAYER2] > newAreaScores[PLAYER1]) winner = PLAYER2;
+                                else winner = 'draw';
+                            }
+
+                            let winnerText = "무승부";
+                            if (winner === PLAYER1) winnerText = "P1 승리";
+                            else if (winner === PLAYER2) winnerText = "P2 승리";
+                            else if (winner === PLAYER3) winnerText = "P3 승리";
+
+                            message = `게임 종료! ${winnerText}. (P1:${newAreaScores[PLAYER1]}, P2:${newAreaScores[PLAYER2]}`;
+                            if (isThreePlayerGameActiveForWin) message += `, P3:${newAreaScores[PLAYER3]}`;
+                            message += ")";
+                        }
+
+                        transaction.update(gameDocRef, {
+                            hWalls: JSON.stringify(newHWalls),
+                            vWalls: JSON.stringify(newVWalls),
+                            playerPositions: currentFirestorePlayerPositions, 
+                            areaScores: newAreaScores,
+                            gameState: nextGameState,
+                            currentPlayer: nextPlayer,
+                            winner: winner,
+                            turnContext: nextTurnContext, 
+                            updatedAt: serverTimestamp(),
+                            lastMessage: message
+                        });
+                    }
+                });
+            } catch (error) {
+                console.error("Error placing wall and committing turn:", error);
+                showModal("벽 설치/턴 종료 오류", "오류 발생: " + error.message);
+                renderBoard(); 
+            }
+        }
+
+        function isValidMove(startR, startC, endR, endC, player) {
+            if (!currentGlobalGameState.hWalls || !currentGlobalGameState.vWalls) return false;
+            return isValidMoveWithState(startR, startC, endR, endC, player, currentGlobalGameState.hWalls, currentGlobalGameState.vWalls, currentGlobalGameState.gridSize);
+        }
+
+        function isValidMoveWithState(startR, startC, endR, endC, player, hWallsState, vWallsState, currentGridSize) {
+            if (endR < 0 || endR >= currentGridSize || endC < 0 || endC >= currentGridSize) return false; 
+            if (startR === endR && startC === endC) return true; 
+
+            const dr = Math.abs(startR - endR);
+            const dc = Math.abs(startC - endC);
+            if (!((dr === 1 && dc === 0) || (dr === 0 && dc === 1))) return false; 
+
+            if (endR < startR) { 
+                if (hWallsState[endR]?.[endC] !== EMPTY && hWallsState[endR]?.[endC] !== undefined) return false;
+            } else if (endR > startR) { 
+                if (hWallsState[startR]?.[startC] !== EMPTY && hWallsState[startR]?.[startC] !== undefined) return false;
+            } else if (endC < startC) { 
+                if (vWallsState[endR]?.[endC] !== EMPTY && vWallsState[endR]?.[endC] !== undefined) return false;
+            } else if (endC > startC) { 
+                if (vWallsState[startR]?.[startC] !== EMPTY && vWallsState[startR]?.[startC] !== undefined) return false;
+            }
+            return true;
+        }
+
+
+        function getPieceAt(r, c) {
+            if (!currentGlobalGameState.playerPositions) return null;
+            return getPieceAtWithState(r,c, currentGlobalGameState.playerPositions);
+        }
+
+        function getPieceAtWithState(r, c, playerPositionsState) {
+            if (!playerPositionsState || typeof playerPositionsState !== 'object') return null;
+
+            for (const player of [PLAYER1, PLAYER2, PLAYER3]) { 
+                if (playerPositionsState[player]) {
+                    for (const piece of playerPositionsState[player]) {
+                        if (piece.r === r && piece.c === c) return piece;
+                    }
+                }
+            }
+            return null;
+        }
+
+        function isCellOccupied(r,c){
+            return getPieceAt(r,c) !== null;
+        }
+
+        function findEnclosedAreas() {
+            if (!currentGlobalGameState.hWalls || !currentGlobalGameState.vWalls || !currentGlobalGameState.playerPositions) {
+                return [];
+            }
+            return findEnclosedAreasWithState(currentGlobalGameState);
+        }
+
+        function findEnclosedAreasWithState(gameStateSnapshot) {
+            if (!gameStateSnapshot || typeof gameStateSnapshot.gridSize !== 'number' ||
+                !gameStateSnapshot.hWalls || !gameStateSnapshot.vWalls || !gameStateSnapshot.playerPositions) {
+                console.error("findEnclosedAreasWithState: Invalid gameStateSnapshot", gameStateSnapshot);
+                return [];
+            }
+
+            const visited = Array(gameStateSnapshot.gridSize).fill(null).map(() => Array(gameStateSnapshot.gridSize).fill(false));
+            const allAreas = [];
+
+            for (let r_loop = 0; r_loop < gameStateSnapshot.gridSize; r_loop++) {
+                for (let c_loop = 0; c_loop < gameStateSnapshot.gridSize; c_loop++) {
+                    if (!visited[r_loop][c_loop]) {
+                        const currentAreaCells = [];
+                        const areaPlayers = new Set(); 
+                        const q = [{ r: r_loop, c: c_loop }]; 
+                        visited[r_loop][c_loop] = true;
+                        let head = 0;
+
+                        while(head < q.length) {
+                            const curr = q[head++];
+                            currentAreaCells.push(curr);
+                            const piece = getPieceAtWithState(curr.r, curr.c, gameStateSnapshot.playerPositions);
+                            if (piece) {
+                                areaPlayers.add(piece.player);
+                            }
+
+                            const {r, c} = curr;
+                            const neighbors = [
+                                { nr: r - 1, nc: c, wallCheck: () => r > 0 && gameStateSnapshot.hWalls[r-1]?.[c] === EMPTY }, 
+                                { nr: r + 1, nc: c, wallCheck: () => r < gameStateSnapshot.gridSize - 1 && gameStateSnapshot.hWalls[r]?.[c] === EMPTY }, 
+                                { nr: r, nc: c - 1, wallCheck: () => c > 0 && gameStateSnapshot.vWalls[r]?.[c-1] === EMPTY }, 
+                                { nr: r, nc: c + 1, wallCheck: () => c < gameStateSnapshot.gridSize - 1 && gameStateSnapshot.vWalls[r]?.[c] === EMPTY }  
+                            ];
+
+                            for (const neighbor of neighbors) {
+                                if (neighbor.nr >= 0 && neighbor.nr < gameStateSnapshot.gridSize &&
+                                    neighbor.nc >= 0 && neighbor.nc < gameStateSnapshot.gridSize &&
+                                    !visited[neighbor.nr][neighbor.nc] && neighbor.wallCheck()) {
+                                    visited[neighbor.nr][neighbor.nc] = true;
+                                    q.push({ r: neighbor.nr, c: neighbor.nc });
+                                }
+                            }
+                        }
+
+                        let owner = EMPTY;
+                        if (areaPlayers.size === 1) {
+                            owner = areaPlayers.values().next().value; 
+                        } else if (areaPlayers.size > 1) {
+                            owner = 'contested';
+                        }
+                        allAreas.push({ cells: currentAreaCells, owner: owner, playersInArea: areaPlayers });
+                    }
+                }
+            }
+            return allAreas;
+        }
+
+        function checkGameEndWithState(areas) {
+            if (!areas || areas.length === 0) return false; 
+            for (const area of areas) {
+                if (area.owner === 'contested') return false;
+            }
+            return true; 
+        }
+
+        function updateTurnIndicator() {
+            if (!turnIndicatorElement || !currentGlobalGameState) return;
+            if (currentGlobalGameState.gameState === STATE_GAME_OVER) {
+                turnIndicatorElement.textContent = "게임 종료";
+            } else if (currentGlobalGameState.gameState !== STATE_LOBBY &&
+                       currentGlobalGameState.gameState !== STATE_GAME_SETUP &&
+                       currentGlobalGameState.gameState !== STATE_INITIAL &&
+                       currentGlobalGameState.gameState !== STATE_DICE_ROLL_SETUP) {
+                turnIndicatorElement.textContent = `P${currentGlobalGameState.currentPlayer} 차례`;
+                let colorClass = 'text-gray-700'; 
+                if (currentGlobalGameState.currentPlayer === PLAYER1) colorClass = 'text-red-600';
+                else if (currentGlobalGameState.currentPlayer === PLAYER2) colorClass = 'text-blue-600';
+                else if (currentGlobalGameState.currentPlayer === PLAYER3) colorClass = 'text-emerald-600';
+                turnIndicatorElement.className = `text-xl font-semibold text-center ${colorClass}`;
+            } else {
+                turnIndicatorElement.textContent = ""; 
+            }
+        }
+        function updateTurnIndicatorForPlacement() {
+            if (!turnIndicatorElement || !currentGlobalGameState) return;
+            if (currentGlobalGameState.gameState !== STATE_PIECE_PLACEMENT) return;
+            const placer = currentGlobalGameState.placementPlayer;
+            turnIndicatorElement.textContent = `P${placer} 말 배치`;
+            let colorClass = 'text-gray-700';
+            if (placer === PLAYER1) colorClass = 'text-red-500';
+            else if (placer === PLAYER2) colorClass = 'text-blue-500';
+            else if (placer === PLAYER3) colorClass = 'text-emerald-500';
+            turnIndicatorElement.className = `text-xl font-semibold text-center ${colorClass}`;
+        }
+
+        // --- Turn Timer Functions ---
+        function startLocalTurnTimer() {
+            clearLocalTurnTimer();
+            if (!currentGlobalGameState || currentGlobalGameState.turnTimeLimitSeconds <= 0 || currentGlobalGameState.currentPlayer !== localPlayerNumber ||
+                (currentGlobalGameState.gameState !== STATE_AWAIT_PIECE_SELECTION &&
+                 currentGlobalGameState.gameState !== STATE_AWAIT_MOVE &&
+                 currentGlobalGameState.gameState !== STATE_AWAIT_WALL_PLACEMENT &&
+                 currentGlobalGameState.gameState !== STATE_PIECE_PLACEMENT) 
+            ) {
+                return;
+            }
+
+            remainingTurnTime = currentGlobalGameState.turnTimeLimitSeconds;
+
+            turnTimerInterval = setInterval(() => {
+                remainingTurnTime--;
+                if (remainingTurnTime <= 0) {
+                    handleTurnTimeout();
+                }
+            }, 1000);
+        }
+
+        function clearLocalTurnTimer() {
+            if (turnTimerInterval) {
+                clearInterval(turnTimerInterval);
+                turnTimerInterval = null;
+            }
+        }
+
+        function startGlobalTimerDisplayUpdater() {
+            stopGlobalTimerDisplayUpdater(); 
+
+            const updateDisplay = () => {
+                if (!currentGlobalGameState || !currentGlobalGameState.turnContext || !currentGlobalGameState.turnContext.startTime ||
+                    currentGlobalGameState.turnTimeLimitSeconds <= 0 || currentGlobalGameState.gameState === STATE_GAME_OVER ||
+                    currentGlobalGameState.gameState === STATE_LOBBY || currentGlobalGameState.gameState === STATE_INITIAL ||
+                    currentGlobalGameState.gameState === STATE_GAME_SETUP || currentGlobalGameState.gameState === STATE_DICE_ROLL_SETUP) {
+                    turnTimerDisplay.textContent = '';
+                    turnTimerDisplay.style.color = ''; 
+                    stopGlobalTimerDisplayUpdater();
+                    return;
+                }
+
+                const turnPlayer = currentGlobalGameState.turnContext.player;
+                const startTime = currentGlobalGameState.turnContext.startTime.toDate().getTime();
+                const elapsedSeconds = (Date.now() - startTime) / 1000;
+                const timeForThisTurn = Math.max(0, currentGlobalGameState.turnTimeLimitSeconds - elapsedSeconds);
+
+                turnTimerDisplay.textContent = `P${turnPlayer} 남은 시간: ${Math.round(timeForThisTurn)}초`;
+
+                if (timeForThisTurn < 10) {
+                    turnTimerDisplay.style.color = '#ef4444'; 
+                } else if (timeForThisTurn < 20) {
+                    turnTimerDisplay.style.color = '#f97316'; 
+                } else {
+                    turnTimerDisplay.style.color = '#1d4ed8'; 
+                }
+            };
+
+            updateDisplay(); 
+            globalTimerUpdateInterval = setInterval(updateDisplay, 1000);
+        }
+
+        function stopGlobalTimerDisplayUpdater() {
+            if (globalTimerUpdateInterval) clearInterval(globalTimerUpdateInterval);
+            globalTimerUpdateInterval = null;
+        }
+
+
+        async function handleTurnTimeout() {
+            clearLocalTurnTimer(); 
+            showModal("시간 초과!", `플레이어 ${currentGlobalGameState.currentPlayer}의 시간이 초과되었습니다. 랜덤으로 벽이 설치됩니다.`);
+            await placeRandomWallForPenalty(currentGlobalGameState.currentPlayer);
+        }
+
+        async function placeRandomWallForPenalty(playerNum) {
+            if (!currentGlobalGameState || currentGlobalGameState.currentPlayer !== playerNum) return;
+
+            const playerPieces = currentGlobalGameState.playerPositions[playerNum];
+            if (!playerPieces || playerPieces.length === 0) {
+                await commitTurnWithNoWall(playerNum, `시간 초과, 플레이어 ${playerNum}의 말이 없어 벽 설치 불가.`);
+                return;
+            }
+
+            let allPotentialWallSpots = [];
+            for (const piece of playerPieces) {
+                const { r: pieceR, c: pieceC } = piece;
+                if (pieceR > 0 && currentGlobalGameState.hWalls[pieceR-1]?.[pieceC] === EMPTY) {
+                    allPotentialWallSpots.push({type: 'h', r_wall: pieceR-1, c_wall: pieceC});
+                }
+                if (pieceR < currentGlobalGameState.gridSize - 1 && currentGlobalGameState.hWalls[pieceR]?.[pieceC] === EMPTY) {
+                    allPotentialWallSpots.push({type: 'h', r_wall: pieceR, c_wall: pieceC});
+                }
+                if (pieceC > 0 && currentGlobalGameState.vWalls[pieceR]?.[pieceC-1] === EMPTY) {
+                    allPotentialWallSpots.push({type: 'v', r_wall: pieceR, c_wall: pieceC-1});
+                }
+                if (pieceC < currentGlobalGameState.gridSize - 1 && currentGlobalGameState.vWalls[pieceR]?.[pieceC] === EMPTY) {
+                    allPotentialWallSpots.push({type: 'v', r_wall: pieceR, c_wall: pieceC});
+                }
+            }
+
+            if (allPotentialWallSpots.length === 0) {
+                console.log(`No valid wall spots around any of P${playerNum}'s pieces for penalty.`);
+                await commitTurnWithNoWall(playerNum, `시간 초과, 플레이어 ${playerNum} 주변에 벽 설치 가능한 곳 없음.`);
+                return;
+            }
+
+            const chosenSpot = allPotentialWallSpots[Math.floor(Math.random() * allPotentialWallSpots.length)];
+
+            const gameDocRef = getGameDocRef(currentGameId);
+            try {
+                await runTransaction(db, async (transaction) => {
+                    const gameDoc = await transaction.get(gameDocRef);
+                    if (!gameDoc.exists()) throw new Error("게임 데이터를 찾을 수 없습니다.");
+                    let data = gameDoc.data();
+
+                    let finalPlayerPositions = JSON.parse(JSON.stringify(data.playerPositions));
+                    let newHWalls = JSON.parse(data.hWalls);
+                    let newVWalls = JSON.parse(data.vWalls);
+
+                    if (chosenSpot.type === 'h') {
+                        newHWalls[chosenSpot.r_wall][chosenSpot.c_wall] = playerNum;
+                    } else { 
+                        newVWalls[chosenSpot.r_wall][chosenSpot.c_wall] = playerNum;
+                    }
+
+                    const tempGameStateForCalc = {
+                        ...data, 
+                        hWalls: newHWalls,
+                        vWalls: newVWalls,
+                        playerPositions: finalPlayerPositions,
+                        gridSize: data.gridSize
+                    };
+                    const areas = findEnclosedAreasWithState(tempGameStateForCalc);
+                    const newAreaScores = { [PLAYER1]:0, [PLAYER2]:0, [PLAYER3]:0 };
+                    areas.forEach(area => {
+                        if (area.owner !== 'contested' && area.owner !== EMPTY) {
+                            newAreaScores[area.owner] = (newAreaScores[area.owner] || 0) + area.cells.length;
+                        }
+                    });
+
+                    let nextGameState = STATE_AWAIT_PIECE_SELECTION;
+                    let nextPlayer;
+                    const currentOrderIndex = data.playerOrder.indexOf(data.currentPlayer);
+                    const nextOrderIndex = (currentOrderIndex + 1) % data.playerOrder.length;
+                    nextPlayer = data.playerOrder[nextOrderIndex];
+                    let winner = null;
+                    let message = `플레이어 ${playerNum} 시간 초과로 벽 자동 설치. 다음은 플레이어 ${nextPlayer} 턴.`;
+                    let nextTurnContext = { player: nextPlayer, startTime: serverTimestamp() };
+
+
+                    if (checkGameEndWithState(areas)) {
+                        nextGameState = STATE_GAME_OVER;
+                        nextTurnContext = null;
+                        const isThreePlayerGameActiveForWin = data.playerPiecesConfig[PLAYER3] > 0;
+                        if (isThreePlayerGameActiveForWin) {
+                            if (newAreaScores[PLAYER1] > newAreaScores[PLAYER2] && newAreaScores[PLAYER1] > newAreaScores[PLAYER3]) winner = PLAYER1;
+                            else if (newAreaScores[PLAYER2] > newAreaScores[PLAYER1] && newAreaScores[PLAYER2] > newAreaScores[PLAYER3]) winner = PLAYER2;
+                            else if (newAreaScores[PLAYER3] > newAreaScores[PLAYER1] && newAreaScores[PLAYER3] > newAreaScores[PLAYER2]) winner = PLAYER3;
+                            else winner = 'draw';
+                        } else {
+                            if (newAreaScores[PLAYER1] > newAreaScores[PLAYER2]) winner = PLAYER1;
+                            else if (newAreaScores[PLAYER2] > newAreaScores[PLAYER1]) winner = PLAYER2;
+                            else winner = 'draw';
+                        }
+                        let winnerText = winner === 'draw' ? "무승부" : `P${winner} 승리`;
+                        message = `게임 종료! ${winnerText}. (P1:${newAreaScores[PLAYER1]}, P2:${newAreaScores[PLAYER2]}`;
+                        if (isThreePlayerGameActiveForWin) message += `, P3:${newAreaScores[PLAYER3]}`;
+                        message += ")";
+                    }
+
+                    transaction.update(gameDocRef, {
+                        hWalls: JSON.stringify(newHWalls),
+                        vWalls: JSON.stringify(newVWalls),
+                        playerPositions: finalPlayerPositions, 
+                        areaScores: newAreaScores,
+                        gameState: nextGameState,
+                        currentPlayer: nextPlayer,
+                        winner: winner,
+                        turnContext: nextTurnContext,
+                        updatedAt: serverTimestamp(),
+                        lastMessage: message
+                    });
+                });
+            } catch (error) {
+                console.error("Error placing penalty wall:", error);
+                showModal("오류", "패널티 벽 설치 중 오류 발생: " + error.message);
+                await commitTurnWithNoWall(playerNum, `시간 초과, 플레이어 ${playerNum}의 턴 종료 (벽 설치 실패).`);
+            }
+        }
+
+        async function commitTurnWithNoWall(playerNum, reasonMessage) {
+            const gameDocRef = getGameDocRef(currentGameId);
+            try {
+                await runTransaction(db, async (transaction) => {
+                    const gameDoc = await transaction.get(gameDocRef);
+                    if (!gameDoc.exists()) throw new Error("게임 데이터를 찾을 수 없습니다.");
+                    let data = gameDoc.data();
+
+                    let finalPlayerPositions = JSON.parse(JSON.stringify(data.playerPositions)); 
+
+                    const tempGameStateForCalc = {
+                        ...data,
+                        playerPositions: finalPlayerPositions,
+                        hWalls: JSON.parse(data.hWalls), 
+                        vWalls: JSON.parse(data.vWalls),
+                        gridSize: data.gridSize
+                    };
+                    const areas = findEnclosedAreasWithState(tempGameStateForCalc);
+                    const newAreaScores = { [PLAYER1]:0, [PLAYER2]:0, [PLAYER3]:0 };
+                    areas.forEach(area => {
+                        if (area.owner !== 'contested' && area.owner !== EMPTY) {
+                            newAreaScores[area.owner] = (newAreaScores[area.owner] || 0) + area.cells.length;
+                        }
+                    });
+
+                    let nextGameState = STATE_AWAIT_PIECE_SELECTION;
+                    let nextPlayer;
+                    const currentOrderIndex = data.playerOrder.indexOf(data.currentPlayer);
+                    const nextOrderIndex = (currentOrderIndex + 1) % data.playerOrder.length;
+                    nextPlayer = data.playerOrder[nextOrderIndex];
+                    let winner = null;
+                    let message = `${reasonMessage} 다음은 플레이어 ${nextPlayer} 턴.`;
+                    let nextTurnContext = { player: nextPlayer, startTime: serverTimestamp() };
+
+
+                    if (checkGameEndWithState(areas)) {
+                        nextGameState = STATE_GAME_OVER;
+                        nextTurnContext = null;
+                        const isThreePlayerGameActiveForWin = data.playerPiecesConfig[PLAYER3] > 0;
+                        if (isThreePlayerGameActiveForWin) {
+                            if (newAreaScores[PLAYER1] > newAreaScores[PLAYER2] && newAreaScores[PLAYER1] > newAreaScores[PLAYER3]) winner = PLAYER1;
+                            else if (newAreaScores[PLAYER2] > newAreaScores[PLAYER1] && newAreaScores[PLAYER2] > newAreaScores[PLAYER3]) winner = PLAYER2;
+                            else if (newAreaScores[PLAYER3] > newAreaScores[PLAYER1] && newAreaScores[PLAYER3] > newAreaScores[PLAYER2]) winner = PLAYER3;
+                            else winner = 'draw';
+                        } else {
+                            if (newAreaScores[PLAYER1] > newAreaScores[PLAYER2]) winner = PLAYER1;
+                            else if (newAreaScores[PLAYER2] > newAreaScores[PLAYER1]) winner = PLAYER2;
+                            else winner = 'draw';
+                        }
+                        let winnerText = winner === 'draw' ? "무승부" : `P${winner} 승리`;
+                        message = `게임 종료! ${winnerText}. (P1:${newAreaScores[PLAYER1]}, P2:${newAreaScores[PLAYER2]}`;
+                        if (isThreePlayerGameActiveForWin) message += `, P3:${newAreaScores[PLAYER3]}`;
+                        message += ")";
+                    }
+
+                    transaction.update(gameDocRef, {
+                        playerPositions: finalPlayerPositions, 
+                        areaScores: newAreaScores, 
+                        gameState: nextGameState,
+                        currentPlayer: nextPlayer,
+                        winner: winner,
+                        turnContext: nextTurnContext,
+                        updatedAt: serverTimestamp(),
+                        lastMessage: message
+                    });
+                });
+            } catch (error) {
+                console.error("Error committing turn with no wall:", error);
+                showModal("오류", "턴 종료 중 오류: " + error.message);
+            }
+        }
+
+
+        resetButtonElement.addEventListener('click', async () => {
+            clearLocalTurnTimer();
+            stopGlobalTimerDisplayUpdater();
+            if (currentGameId && localPlayerNumber && currentGlobalGameState &&
+                currentGlobalGameState.gameState !== STATE_INITIAL &&
+                currentGlobalGameState.gameState !== STATE_LOBBY &&
+                currentGlobalGameState.gameState !== STATE_GAME_SETUP &&
+                currentGlobalGameState.gameState !== STATE_GAME_OVER) {
+
+                const gameDocRef = getGameDocRef(currentGameId);
+                const updates = {
+                    updatedAt: serverTimestamp(),
+                };
+                if (localPlayerNumber === PLAYER1) updates.player1Id = null;
+                else if (localPlayerNumber === PLAYER2) updates.player2Id = null;
+                else if (localPlayerNumber === PLAYER3) updates.player3Id = null;
+
+                try {
+                    await updateDoc(gameDocRef, updates);
+                    console.log(`Player ${localPlayerNumber} (${userId}) has signaled leaving game ${currentGameId}.`);
+                } catch (error) {
+                    console.error("Error signaling player departure:", error);
+                }
+            }
+            resetToInitialScreen();
+        });
+
+        window.addEventListener('beforeunload', async (event) => {
+            clearLocalTurnTimer();
+            stopGlobalTimerDisplayUpdater();
+            if (currentGameId && localPlayerNumber && currentGlobalGameState &&
+                currentGlobalGameState.gameState !== STATE_INITIAL &&
+                currentGlobalGameState.gameState !== STATE_LOBBY &&
+                currentGlobalGameState.gameState !== STATE_GAME_SETUP &&
+                currentGlobalGameState.gameState !== STATE_GAME_OVER) {
+
+                const gameDocRef = getGameDocRef(currentGameId);
+                const updates = { updatedAt: serverTimestamp() };
+                if (localPlayerNumber === PLAYER1) updates.player1Id = null;
+                else if (localPlayerNumber === PLAYER2) updates.player2Id = null;
+                else if (localPlayerNumber === PLAYER3) updates.player3Id = null;
+                try {
+                    setDoc(gameDocRef, updates, {merge: true}); 
+                    console.log(`Attempted to signal departure for P${localPlayerNumber} on beforeunload.`);
+                } catch(e) { /* ignore errors in beforeunload as it's best-effort */ }
+            }
+        });
+
+
+        function resetToInitialScreen() {
+            clearLocalTurnTimer();
+            stopGlobalTimerDisplayUpdater();
+            if (unsubscribeGameListener) {
+                unsubscribeGameListener();
+                unsubscribeGameListener = null;
+            }
+            if (unsubscribeChatListener) {
+                unsubscribeChatListener();
+                unsubscribeChatListener = null;
+            }
+            currentGameId = null;
+            localPlayerNumber = null;
+            activePiece = null;
+            movesMadeThisTurn = 0;
+            pieceActionLocked = false;
+
+            const defaultGridSize = 4;
+            const defaultPiecesPerPlayerForReset = 2; 
+            const defaultNumPlayersForReset = 2;
+
+            currentGlobalGameState = { // Reset to default structure
+                gridSize: defaultGridSize,
+                playerPiecesConfig: { 
+                [PLAYER1]: defaultPiecesPerPlayerForReset, 
+                [PLAYER2]: defaultPiecesPerPlayerForReset, 
+                [PLAYER3]: (defaultNumPlayersForReset === 3) ? defaultPiecesPerPlayerForReset : 0
+            },
+                currentPlayer: PLAYER1,
+                gameState: STATE_INITIAL,
+                playerPositions: { [PLAYER1]: [], [PLAYER2]: [], [PLAYER3]: [] },
+                hWalls: JSON.stringify(Array(defaultGridSize - 1).fill(null).map(() => Array(defaultGridSize).fill(EMPTY))),
+                vWalls: JSON.stringify(Array(defaultGridSize).fill(null).map(() => Array(defaultGridSize - 1).fill(EMPTY))),
+                areaScores: { [PLAYER1]: 0, [PLAYER2]: 0, [PLAYER3]: 0 },
+                placementPlayer: PLAYER1,
+                piecesToPlace: { 
+                [PLAYER1]: defaultPiecesPerPlayerForReset, 
+                [PLAYER2]: defaultPiecesPerPlayerForReset, 
+                [PLAYER3]: (defaultNumPlayersForReset === 3) ? defaultPiecesPerPlayerForReset : 0
+            },
+                player1Id: null, 
+            player2Id: null, 
+            player3Id: null, 
+            winner: null, 
+            lastMessage: "",
+                diceRolls: { [PLAYER1]: null, [PLAYER2]: null, [PLAYER3]: null }, 
+            playerOrder: [],
+                turnTimeLimitSeconds: 30,
+                turnContext: null,
+            };
+
+            boardContainer.innerHTML = '';
+            chatContainer.innerHTML = '';
+            if (p1AreaScoreElement) p1AreaScoreElement.textContent = '0';
+            if (p2AreaScoreElement) p2AreaScoreElement.textContent = '0';
+            if (p3AreaScoreElement) p3AreaScoreElement.textContent = '0';
+            if (turnIndicatorElement) turnIndicatorElement.textContent = '';
+            if (messageAreaElement) messageAreaElement.textContent = '';
+            if (joinGameIdInput) joinGameIdInput.value = '';
+
+        // 게임 설정 화면의 입력 필드 기본값으로 리셋
+            if (gridSizeInput) gridSizeInput.value = defaultGridSize;
+            if (numPlayersSelect) numPlayersSelect.value = defaultNumPlayersForReset.toString(); // select 태그의 value는 문자열
+            if (piecesPerPlayerInput) piecesPerPlayerInput.value = defaultPiecesPerPlayerForReset;
+            if (turnTimeLimitInput) turnTimeLimitInput.value = 30; 
+
+            turnTimerDisplay.textContent = ''; 
+            turnTimerDisplay.style.color = ''; 
+            showScreen('initial-screen');
+        }
+
+        window.addEventListener('resize', () => {
+            if (currentGlobalGameState && currentGlobalGameState.gameState !== STATE_LOBBY &&
+                currentGlobalGameState.gameState !== STATE_INITIAL &&
+                currentGlobalGameState.gameState !== STATE_GAME_SETUP &&
+                currentGlobalGameState.gameState !== STATE_DICE_ROLL_SETUP &&
+                gamePlayScreen.classList.contains('hidden') === false 
+                ) {
+                renderBoard();
+            }
+        });
+
+        // --- Chat Functionality ---
+        function startChatListener(gameId) {
+            if (unsubscribeChatListener) {
+                unsubscribeChatListener();
+            }
+            const q_chat = query(getChatCollectionRef(gameId), orderBy("timestamp"));
+            unsubscribeChatListener = onSnapshot(q_chat, (querySnapshot) => {
+                chatContainer.innerHTML = ''; 
+                querySnapshot.forEach((doc) => {
+                    const messageData = doc.data();
+                    const messageDiv = document.createElement('div');
+                    messageDiv.classList.add('chat-message');
+
+                    let senderName = `P${messageData.senderPlayerNumber}`;
+                    if (messageData.senderPlayerNumber === localPlayerNumber) {
+                        senderName = "나"; 
+                    }
+
+                    messageDiv.textContent = `${senderName}: ${messageData.text}`;
+
+                    if (messageData.senderPlayerNumber === PLAYER1) messageDiv.classList.add('chat-message-p1');
+                    else if (messageData.senderPlayerNumber === PLAYER2) messageDiv.classList.add('chat-message-p2');
+                    else if (messageData.senderPlayerNumber === PLAYER3) messageDiv.classList.add('chat-message-p3');
+                    else messageDiv.classList.add('chat-message-other'); 
+
+                    chatContainer.appendChild(messageDiv);
+                });
+                chatContainer.scrollTop = chatContainer.scrollHeight; 
+            }, (error) => {
+                console.error("Error in chat listener:", error);
+            });
+        }
+
+        sendChatBtn.addEventListener('click', async () => {
+            const text = chatInput.value.trim();
+            if (text && currentGameId && localPlayerNumber && userId) {
+                try {
+                    await addDoc(getChatCollectionRef(currentGameId), {
+                        senderId: userId,
+                        senderPlayerNumber: localPlayerNumber,
+                        text: text,
+                        timestamp: serverTimestamp()
+                    });
+                    chatInput.value = ''; 
+                } catch (error) {
+                    console.error("Error sending chat message:", error);
+                    showModal("채팅 오류", "메시지를 보낼 수 없습니다.");
+                }
+            } else if (!localPlayerNumber) {
+                showModal("채팅 오류", "게임에 참여해야 채팅할 수 있습니다.");
+            }
+        });
+        chatInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault(); 
+                sendChatBtn.click();
+            }
+        });
+
+
+        // Initial setup
+        showScreen('initial-screen');
+        disableLobbyButtons(); // Buttons enabled after auth
+
+    </script>
+</body>
+</html>
